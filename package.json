@@ -1,0 +1,18 @@
+{
+  "name": "thbw-rag-chatbot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone RAG chatbot prototype over the ThBw correspondence archive (read-only retrieval, hybrid local/cloud generation). Lives outside the original ThBw/ codebase.",
+  "type": "module",
+  "scripts": {
+    "build:corpus": "node scripts/buildCorpus.js",
+    "build:index": "node scripts/buildIndex.js",
+    "start": "node server/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "mongodb": "^6.9.0",
+    "openai": "^7.4.0"
+  }
+}

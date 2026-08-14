@@ -1,0 +1,8 @@
+node_modules/
+.env
+
+# Generated artefacts — rebuild with `npm run build:corpus` / `npm run build:index`.
+data/embeddings.bin
+data/corpus.jsonl
+
+*.bak

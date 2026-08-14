@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ThBw Briefarchiv – Chatbot (Prototyp)</title>
+<style>
+  :root {
+    --bg: #f6f4ef;
+    --panel: #ffffff;
+    --ink: #2b2620;
+    --muted: #7a7266;
+    --accent: #7a3b2e;
+    --accent-soft: #efe2dc;
+    --border: #e4ddd2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    background: var(--bg);
+    color: var(--ink);
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .app {
+    width: 100%;
+    max-width: 880px;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header {
+    padding: 20px 24px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 1.25rem; margin: 0 0 4px; }
+  header p { margin: 0; color: var(--muted); font-size: 0.85rem; }
+  #log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .msg { max-width: 100%; }
+  .msg.user .bubble {
+    background: var(--accent);
+    color: white;
+    margin-left: auto;
+  }
+  .msg.user { display: flex; }
+  .bubble {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 12px 16px;
+    border-radius: 10px;
+    max-width: 75%;
+    white-space: pre-wrap;
+    line-height: 1.5;
+  }
+  .msg.bot .bubble { max-width: 100%; }
+  .sources {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .source {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.82rem;
+  }
+  .source .head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .source .head a {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .source .head a:hover { text-decoration: underline; }
+  .badge {
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .badge.intern { background: #f3e2c2; color: #7a5a1e; }
+  .source .meta { color: var(--muted); margin: 4px 0; }
+  .source .snippet { margin-top: 4px; }
+  details.cmif summary { cursor: pointer; color: var(--muted); font-size: 0.78rem; margin-top: 4px; }
+  details.cmif pre {
+    white-space: pre-wrap;
+    background: #f2ede4;
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    overflow-x: auto;
+  }
+  form {
+    display: flex;
+    gap: 10px;
+    padding: 16px 24px 20px;
+    border-top: 1px solid var(--border);
+  }
+  input[type="text"] {
+    flex: 1;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 0.95rem;
+    font-family: inherit;
+  }
+  button {
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: white;
+    font-size: 0.95rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .status { color: var(--muted); font-size: 0.85rem; font-style: italic; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>ThBw Briefarchiv – Chatbot (Prototyp)</h1>
+    <p>Suche läuft lokal (Ollama), Antwortgenerierung über die DeepSeek-API (Cloud). Jede Antwort ist mit den zugrunde liegenden Briefen belegt — folgen Sie den Links zum Originaleintrag, um sie gegenzuprüfen.</p>
+  </header>
+  <div id="log"></div>
+  <form id="form">
+    <input id="input" type="text" placeholder="Frage zum Briefarchiv stellen…" autocomplete="off" />
+    <button id="send" type="submit">Senden</button>
+  </form>
+</div>
+<script>
+const log = document.getElementById('log');
+const form = document.getElementById('form');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function addUserMessage(text) {
+  const msg = el('div', 'msg user');
+  msg.appendChild(el('div', 'bubble', text));
+  log.appendChild(msg);
+  log.scrollTop = log.scrollHeight;
+}
+
+function addBotMessage(answer, sources) {
+  const msg = el('div', 'msg bot');
+  msg.appendChild(el('div', 'bubble', answer));
+
+  if (sources && sources.length) {
+    const box = el('div', 'sources');
+    sources.forEach((s, i) => {
+      const card = el('div', 'source');
+
+      const head = el('div', 'head');
+      const link = el('a');
+      link.href = s.url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = `[${i + 1}] Brief ${s.id}`;
+      head.appendChild(link);
+      const badge = el('span', 'badge' + (s.sichtbar === 'intern' ? ' intern' : ''), s.sichtbar);
+      head.appendChild(badge);
+      card.appendChild(head);
+
+      card.appendChild(el('div', 'meta', s.long));
+
+      if (s.hasRegest) {
+        card.appendChild(el('div', 'snippet', s.regest));
+      } else {
+        card.appendChild(el('div', 'snippet', '(Nur Metadaten – kein Regest/Volltext im Archiv erfasst.)'));
+      }
+
+      const det = document.createElement('details');
+      det.className = 'cmif';
+      const sum = el('summary', null, 'CMIF-Quellenbeleg anzeigen');
+      det.appendChild(sum);
+      const pre = document.createElement('pre');
+      pre.textContent = s.cmif || '(kein CMIF-Eintrag)';
+      det.appendChild(pre);
+      card.appendChild(det);
+
+      box.appendChild(card);
+    });
+    msg.appendChild(box);
+  }
+
+  log.appendChild(msg);
+  log.scrollTop = log.scrollHeight;
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (!text) return;
+  addUserMessage(text);
+  input.value = '';
+  sendBtn.disabled = true;
+
+  const statusMsg = el('div', 'msg bot');
+  const statusBubble = el('div', 'bubble status', 'Durchsuche Archiv und formuliere Antwort…');
+  statusMsg.appendChild(statusBubble);
+  log.appendChild(statusMsg);
+  log.scrollTop = log.scrollHeight;
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+    const data = await res.json();
+    log.removeChild(statusMsg);
+    if (!res.ok) {
+      addBotMessage('Fehler: ' + (data.error || res.statusText), []);
+    } else {
+      addBotMessage(data.answer, data.sources);
+    }
+  } catch (err) {
+    log.removeChild(statusMsg);
+    addBotMessage('Fehler bei der Verbindung zum Server: ' + err.message, []);
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+});
+</script>
+</body>
+</html>
