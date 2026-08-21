@@ -21,8 +21,8 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017";
 const FIXTURES_DIR = path.join(__dirname, "fixtures");
-const N_SUBJECTS = Number(process.env.GEN_SUBJECTS || 20);
-const N_PAIRS = Number(process.env.GEN_PAIRS || 10);
+const N_SUBJECTS = Number(process.env.GEN_SUBJECTS || 35);
+const N_PAIRS = Number(process.env.GEN_PAIRS || 15);
 const SEED = 20260821;
 
 // Small deterministic PRNG (mulberry32) — Math.random would make every
