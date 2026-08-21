@@ -91,6 +91,25 @@ const QUESTIONS = [
   },
   { id: "smalltalk_de", lang: "de", text: "Hallo, wie geht es dir?", expectEmpty: true },
   { id: "offtopic_de", lang: "de", text: "Was ist das beste Rezept für Pizza?", expectEmpty: true },
+  {
+    // Corpus-level statistics cannot be answered from retrieved letters —
+    // the model must refuse rather than count what it was handed (the v2
+    // prototype's G-class hallucination failure).
+    id: "de_adv_stats",
+    lang: "de",
+    text: "Wie viele Briefe enthält das Archiv insgesamt?",
+    expectRefusal: true,
+  },
+  {
+    // Asking for a letter that does not exist: the answer must not pretend
+    // to have read it. Mentioning the asked-for id in the refusal is fine,
+    // so it is exempt from the invented-citation assertion.
+    id: "de_adv_nonexistent",
+    lang: "de",
+    text: "Fasse den Brief 99999 zusammen.",
+    expectRefusal: true,
+    exemptCitations: ["99999"],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -144,7 +163,7 @@ function detectLang(text) {
 // The refusal the server hardcodes plus the phrasings the system prompt tells
 // the model to use when the context does not answer the question.
 function looksLikeRefusal(answer) {
-  return /kein hinreichend relevanter Brief|keine Informationen|keine relevanten|stelle .*konkrete Frage|spezifische Frage/i.test(
+  return /kein hinreichend relevanter Brief|keine Informationen|keine relevanten|stelle .*konkrete Frage|spezifische Frage|betrifft das gesamte Archiv|nicht beantwortet werden|nicht in den bereitgestellten|nicht enthalten/i.test(
     answer
   );
 }
@@ -194,12 +213,13 @@ async function evaluateQuestion(q, fixtures, hardFailures) {
     row.answerLang = detectLang(data.answer);
     row.langAligned = row.answerLang === q.lang;
     const cited = [...new Set([...data.answer.matchAll(/Brief\s+(\d{3,6})/g)].map((m) => m[1]))];
-    const invented = cited.filter((id) => !ids.includes(id));
+    const exempt = new Set(q.exemptCitations || []);
+    const invented = cited.filter((id) => !ids.includes(id) && !exempt.has(id));
     row.citedCount = cited.length;
     if (invented.length) {
       hardFailures.push(`${q.id}: answer cites Brief ${invented.join(", ")} not present in sources`);
     }
-    if (q.expectEmpty) row.refused = looksLikeRefusal(data.answer);
+    if (q.expectEmpty || q.expectRefusal) row.refused = looksLikeRefusal(data.answer);
     // Kept for the review sheet, never for scoring.
     row.topSources = data.sources.slice(0, 10).map((s) => ({ id: s.id, long: s.long, score: s.score }));
   }

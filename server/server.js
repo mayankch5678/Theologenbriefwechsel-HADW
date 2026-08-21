@@ -357,9 +357,12 @@ function buildContext(hits) {
       ]
         .filter(Boolean)
         .join(" | ");
-      const body = r.regest
-        ? r.regest
-        : "(Kein Volltext/Regest vorhanden — nur Metadaten zu diesem Brief.)";
+      // The synthetic flag finally reaches the model: prompt rule 6 asks it
+      // to mark auto-generated summaries, which it could never do while the
+      // context hid which regests were synthesised (handoff §6.5).
+      const body = r.regestSynthetic
+        ? `${r.regest}\n(Automatisch aus Metadaten generierte Zusammenfassung — kein editorisches Regest vorhanden.)`
+        : r.regest;
       return `[${n}] Brief ${r.id} (${r.url})\n${who}\n${body}`;
     })
     .join("\n\n");
@@ -373,7 +376,10 @@ STRIKTE REGELN:
 3. Wenn die bereitgestellten Briefe eine Frage nicht beantworten können, sage klar: "Die vorliegenden Briefe enthalten dazu keine Informationen."
 4. Unterscheide zwischen dem, was ein Brief explizit sagt (Regest), und Briefen, die nur Metadaten haben — kennzeichne letztere als "(nur Metadaten, kein Regest vorhanden)".
 5. Fasse dich kurz und präzise. Keine Spekulationen, keine Hintergrundinformationen aus deinem eigenen Wissen.
-6. Wenn ein Brief als regestSynthetic markiert ist, weise darauf hin, dass die Zusammenfassung automatisch aus Metadaten generiert wurde.`;
+6. Wenn ein Brief als automatisch generierte Zusammenfassung markiert ist, weise darauf hin.
+7. Wenn die Frage Statistik über das GESAMTE Archiv betrifft (z.B. "Wie viele Briefe gibt es insgesamt?", "Wer schrieb die meisten Briefe?"), antworte: "Diese Frage betrifft das gesamte Archiv und kann aus den bereitgestellten Briefen nicht beantwortet werden."
+8. Wenn die Frage eine umfassende Zusammenfassung des ganzen Archivs oder eines ganzen Themengebiets verlangt, erkläre, dass du nur die bereitgestellten Briefe interpretieren kannst.
+9. Wenn nach einem Brief gefragt wird, der nicht in den bereitgestellten Quellen enthalten ist, sage das klar — tu niemals so, als hättest du ihn gelesen.`;
 
 async function generateAnswer(question, context) {
   const completion = await deepseek.chat.completions.create({
@@ -425,7 +431,11 @@ app.post("/api/chat", async (req, res) => {
         matches: hits.length,
         inContext: Math.min(hits.length, CONTEXT_MAX),
       },
-      sources: hits.map(({ record: r, score }) => ({
+      // inContext marks what the model actually saw (the prompt is trimmed
+      // to CONTEXT_MAX) — the UI must not present the rest as evidence for
+      // the answer. hasRegest now means what it says: a synthesised
+      // metadata abstract is not a scholarly regest.
+      sources: hits.map(({ record: r, score }, i) => ({
         id: r.id,
         url: r.url,
         score: Number(score.toFixed(3)),
@@ -434,9 +444,11 @@ app.post("/api/chat", async (req, res) => {
         senders: r.senders,
         recipients: r.recipients,
         regest: r.regest,
+        regestSynthetic: Boolean(r.regestSynthetic),
         cmif: r.cmif,
         sichtbar: r.sichtbar,
-        hasRegest: Boolean(r.regest),
+        hasRegest: !r.regestSynthetic,
+        inContext: i < CONTEXT_MAX,
       })),
     });
   } catch (err) {

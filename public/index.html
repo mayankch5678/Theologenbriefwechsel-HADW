@@ -167,11 +167,32 @@ function addUserMessage(text) {
   log.scrollTop = log.scrollHeight;
 }
 
+// Only the letters that were actually in the model's context are shown as
+// the evidence for the answer; further retrieval candidates the model never
+// saw are collapsed separately, so the source cards can't overstate what
+// the answer is based on.
 function addBotMessage(answer, sources) {
   const msg = el('div', 'msg bot');
   msg.appendChild(el('div', 'bubble', answer));
 
-  if (sources && sources.length) {
+  const cited = (sources || []).filter((s) => s.inContext !== false);
+  const extra = (sources || []).filter((s) => s.inContext === false);
+
+  if (cited.length) {
+    msg.appendChild(renderSourceList(cited));
+  }
+  if (extra.length) {
+    const det = document.createElement('details');
+    det.appendChild(el('summary', 'status', `Weitere Kandidaten aus der Suche (${extra.length}) – nicht in der Antwort berücksichtigt`));
+    det.appendChild(renderSourceList(extra));
+    msg.appendChild(det);
+  }
+
+  log.appendChild(msg);
+  log.scrollTop = log.scrollHeight;
+}
+
+function renderSourceList(sources) {
     const box = el('div', 'sources');
     sources.forEach((s, i) => {
       const card = el('div', 'source');
@@ -192,7 +213,7 @@ function addBotMessage(answer, sources) {
       if (s.hasRegest) {
         card.appendChild(el('div', 'snippet', s.regest));
       } else {
-        card.appendChild(el('div', 'snippet', '(Nur Metadaten – kein Regest/Volltext im Archiv erfasst.)'));
+        card.appendChild(el('div', 'snippet', '(Nur Metadaten – automatisch generierte Zusammenfassung, kein editorisches Regest.)'));
       }
 
       const det = document.createElement('details');
@@ -206,11 +227,7 @@ function addBotMessage(answer, sources) {
 
       box.appendChild(card);
     });
-    msg.appendChild(box);
-  }
-
-  log.appendChild(msg);
-  log.scrollTop = log.scrollHeight;
+    return box;
 }
 
 form.addEventListener('submit', async (e) => {
