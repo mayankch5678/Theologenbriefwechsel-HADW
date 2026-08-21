@@ -67,12 +67,25 @@ function normalize(s) {
 }
 
 // Subjects are curated strings that often carry a parenthetical qualifier
-// ("Augsburger Reichstag (1530)"). Index the stripped form too, so a question
-// that names only the plain subject still matches.
+// ("Augsburger Reichstag (1530)") or comma-separated qualifiers
+// ("Heidelberger Katechismus, Frage 60"). Index the stripped form, the
+// comma-base and each comma segment too, so a question naming only the base
+// subject — or only the qualifier — still reaches the letters tagged with
+// the qualified variant. Letter 25851 (tagged *only* "…, Frage 60") was
+// unreachable by both "Heidelberger Katechismus" and "Frage 60" questions
+// before this. Digit-only segments ("1563") are skipped: they would turn
+// every year mention into a subject match.
 function subjectForms(subject) {
   const forms = new Set([normalize(subject)]);
   const stripped = subject.replace(/\s*\([^)]*\)/g, "");
   if (stripped.trim()) forms.add(normalize(stripped));
+  const segments = stripped.split(",");
+  if (segments.length > 1) {
+    for (const seg of segments) {
+      const form = normalize(seg);
+      if (/\p{L}/u.test(form)) forms.add(form);
+    }
+  }
   return [...forms].filter((f) => f.length >= MIN_SUBJECT_LEN);
 }
 
@@ -85,7 +98,11 @@ async function loadIndex() {
   for (let i = 0; i < records.length; i++) {
     if (records[i].sichtbar === "intern") continue;
     publicIndices.push(i);
-    for (const subject of records[i].keywordSubjects || []) {
+    // Display labels plus the editors' synonym ring (Latin / early-modern
+    // variant labels carried in subjectVariants) — a question phrased in a
+    // period form still reaches the letters tagged with the modern label.
+    const labels = [...(records[i].keywordSubjects || []), ...(records[i].subjectVariants || [])];
+    for (const subject of labels) {
       for (const form of subjectForms(subject)) {
         let bucket = subjectIndex.get(form);
         if (!bucket) subjectIndex.set(form, (bucket = []));

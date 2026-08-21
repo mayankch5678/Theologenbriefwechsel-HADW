@@ -72,7 +72,7 @@ async function main() {
   const [people, orts, saches, textsortes] = await Promise.all([
     db.collection("people").find({}, { projection: { short: 1 } }).toArray(),
     db.collection("orts").find({}, { projection: { short: 1 } }).toArray(),
-    db.collection("saches").find({}, { projection: { short: 1 } }).toArray(),
+    db.collection("saches").find({}, { projection: { short: 1, alternativen: 1 } }).toArray(),
     db.collection("textsortes").find({}, { projection: { short: 1 } }).toArray(),
   ]);
   const nameMap = new Map();
@@ -81,7 +81,19 @@ async function main() {
       nameMap.set(String(doc._id), unwrap(doc.short));
     }
   }
-  console.log(`Loaded ${nameMap.size} reference labels.`);
+  // The subject thesaurus carries a hand-curated synonym ring per subject
+  // (alternativen[].text.v — Latin and early-modern German variant labels,
+  // e.g. "Catechesis Palatina" for "Heidelberger Katechismus"). The keyword
+  // retriever indexes these alongside the display label, so a question using
+  // a period form still hits the letters tagged with the modern label.
+  const subjectAltMap = new Map();
+  for (const doc of saches) {
+    const variants = (doc.alternativen || [])
+      .map((a) => unwrap(a?.text))
+      .filter((v) => typeof v === "string" && v.trim());
+    if (variants.length) subjectAltMap.set(String(doc._id), variants);
+  }
+  console.log(`Loaded ${nameMap.size} reference labels, ${subjectAltMap.size} subjects with synonym variants.`);
 
   const resolveRefs = (arr) =>
     unwrapArray(arr)
@@ -118,6 +130,13 @@ async function main() {
     const keywordPeople = resolveRefs(doc.schlagworte?.personen);
     const keywordPlaces = resolveRefs(doc.schlagworte?.orte);
     const keywordSubjects = resolveRefs(doc.schlagworte?.sachen);
+    // Synonym-ring labels for this letter's subjects. Kept out of `text` so
+    // existing embeddings stay valid — only the keyword index reads them.
+    const subjectVariants = [
+      ...new Set(
+        unwrapArray(doc.schlagworte?.sachen).flatMap((id) => subjectAltMap.get(String(id)) || [])
+      ),
+    ];
 
     const textsorte = doc.textsorte?.v ? nameMap.get(String(doc.textsorte.v)) : null;
     const cmif = unwrap(doc.cmif) || null;
@@ -164,6 +183,7 @@ async function main() {
       keywordPeople,
       keywordPlaces,
       keywordSubjects,
+      subjectVariants,
       cmif,
       hasFullText: false, // transkription/erlaeuterung/incipit are empty across the whole DB
       text: textParts.join("\n"),
