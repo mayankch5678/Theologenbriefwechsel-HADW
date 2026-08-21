@@ -6,94 +6,367 @@
       "id": "de_enum_heidelberg",
       "lang": "de",
       "sources": 565,
-      "ms": 2076,
+      "ms": 1985,
       "goldSize": 46,
       "recall": 0.9782608695652174,
-      "precision": 0.07964601769911504
-    },
-    "en_enum_heidelberg": {
-      "id": "en_enum_heidelberg",
-      "lang": "en",
-      "sources": 30,
-      "ms": 91,
-      "goldSize": 46,
-      "recall": 0.2608695652173913,
-      "precision": 0.4
-    },
-    "fr_enum_heidelberg": {
-      "id": "fr_enum_heidelberg",
-      "lang": "fr",
-      "sources": 30,
-      "ms": 89,
-      "goldSize": 46,
-      "recall": 0.2608695652173913,
-      "precision": 0.4
-    },
-    "zh_enum_heidelberg": {
-      "id": "zh_enum_heidelberg",
-      "lang": "zh",
-      "sources": 30,
-      "ms": 90,
-      "goldSize": 46,
-      "recall": 0.06521739130434782,
-      "precision": 0.1
+      "precision": 0.07964601769911504,
+      "generated": false
     },
     "de_variant_frage60": {
       "id": "de_variant_frage60",
       "lang": "de",
       "sources": 572,
-      "ms": 81,
+      "ms": 94,
       "missing": [
         "25851"
       ],
-      "found": false
+      "found": false,
+      "generated": false
     },
     "de_person_olevian_bullinger": {
       "id": "de_person_olevian_bullinger",
       "lang": "de",
       "sources": 349,
-      "ms": 89,
+      "ms": 104,
       "goldSize": 3,
       "recall": 1,
-      "precision": 0.008595988538681949
+      "precision": 0.008595988538681949,
+      "generated": false
     },
     "de_date_1563": {
       "id": "de_date_1563",
       "lang": "de",
       "sources": 434,
-      "ms": 89,
+      "ms": 87,
       "goldSize": 384,
       "recall": 0.0625,
-      "precision": 0.055299539170506916
+      "precision": 0.055299539170506916,
+      "generated": false
     },
     "de_fact_latein": {
       "id": "de_fact_latein",
       "lang": "de",
       "sources": 228,
-      "ms": 94,
+      "ms": 98,
       "missing": [],
-      "found": true
-    },
-    "smalltalk_zh": {
-      "id": "smalltalk_zh",
-      "lang": "zh",
-      "sources": 30,
-      "ms": 263,
-      "pass": false
+      "found": true,
+      "generated": false
     },
     "smalltalk_de": {
       "id": "smalltalk_de",
       "lang": "de",
       "sources": 30,
-      "ms": 84,
-      "pass": false
+      "ms": 90,
+      "pass": false,
+      "generated": false
     },
     "offtopic_de": {
       "id": "offtopic_de",
       "lang": "de",
       "sources": 30,
+      "ms": 98,
+      "pass": false,
+      "generated": false
+    },
+    "gen_sache_16822": {
+      "id": "gen_sache_16822",
+      "lang": "de",
+      "sources": 430,
+      "ms": 95,
+      "goldSize": 5,
+      "recall": 1,
+      "precision": 0.011627906976744186,
+      "generated": true
+    },
+    "gen_sache_11963": {
+      "id": "gen_sache_11963",
+      "lang": "de",
+      "sources": 452,
+      "ms": 89,
+      "goldSize": 22,
+      "recall": 1,
+      "precision": 0.048672566371681415,
+      "generated": true
+    },
+    "gen_sache_22949": {
+      "id": "gen_sache_22949",
+      "lang": "de",
+      "sources": 438,
+      "ms": 100,
+      "goldSize": 4,
+      "recall": 1,
+      "precision": 0.0091324200913242,
+      "generated": true
+    },
+    "gen_sache_10583": {
+      "id": "gen_sache_10583",
+      "lang": "de",
+      "sources": 555,
+      "ms": 105,
+      "goldSize": 13,
+      "recall": 1,
+      "precision": 0.023423423423423424,
+      "generated": true
+    },
+    "gen_sache_11144": {
+      "id": "gen_sache_11144",
+      "lang": "de",
+      "sources": 471,
+      "ms": 100,
+      "goldSize": 43,
+      "recall": 1,
+      "precision": 0.09129511677282377,
+      "generated": true
+    },
+    "gen_sache_29004": {
+      "id": "gen_sache_29004",
+      "lang": "de",
+      "sources": 429,
+      "ms": 96,
+      "goldSize": 3,
+      "recall": 1,
+      "precision": 0.006993006993006993,
+      "generated": true
+    },
+    "gen_sache_13769": {
+      "id": "gen_sache_13769",
+      "lang": "de",
+      "sources": 436,
+      "ms": 98,
+      "goldSize": 11,
+      "recall": 0.9090909090909091,
+      "precision": 0.022935779816513763,
+      "generated": true
+    },
+    "gen_sache_22913": {
+      "id": "gen_sache_22913",
+      "lang": "de",
+      "sources": 440,
+      "ms": 97,
+      "goldSize": 4,
+      "recall": 1,
+      "precision": 0.00909090909090909,
+      "generated": true
+    },
+    "gen_sache_10467": {
+      "id": "gen_sache_10467",
+      "lang": "de",
+      "sources": 453,
+      "ms": 95,
+      "goldSize": 25,
+      "recall": 1,
+      "precision": 0.05518763796909492,
+      "generated": true
+    },
+    "gen_sache_17949": {
+      "id": "gen_sache_17949",
+      "lang": "de",
+      "sources": 460,
+      "ms": 90,
+      "goldSize": 4,
+      "recall": 1,
+      "precision": 0.008695652173913044,
+      "generated": true
+    },
+    "gen_sache_10605": {
+      "id": "gen_sache_10605",
+      "lang": "de",
+      "sources": 1019,
+      "ms": 92,
+      "goldSize": 11,
+      "recall": 1,
+      "precision": 0.010794896957801767,
+      "generated": true
+    },
+    "gen_sache_18254": {
+      "id": "gen_sache_18254",
+      "lang": "de",
+      "sources": 444,
+      "ms": 102,
+      "goldSize": 11,
+      "recall": 1,
+      "precision": 0.024774774774774775,
+      "generated": true
+    },
+    "gen_sache_18682": {
+      "id": "gen_sache_18682",
+      "lang": "de",
+      "sources": 444,
+      "ms": 91,
+      "goldSize": 3,
+      "recall": 1,
+      "precision": 0.006756756756756757,
+      "generated": true
+    },
+    "gen_sache_10310": {
+      "id": "gen_sache_10310",
+      "lang": "de",
+      "sources": 449,
+      "ms": 94,
+      "goldSize": 4,
+      "recall": 1,
+      "precision": 0.008908685968819599,
+      "generated": true
+    },
+    "gen_sache_10228": {
+      "id": "gen_sache_10228",
+      "lang": "de",
+      "sources": 459,
+      "ms": 95,
+      "goldSize": 43,
+      "recall": 0.9767441860465116,
+      "precision": 0.0915032679738562,
+      "generated": true
+    },
+    "gen_sache_14714": {
+      "id": "gen_sache_14714",
+      "lang": "de",
+      "sources": 450,
+      "ms": 93,
+      "goldSize": 5,
+      "recall": 1,
+      "precision": 0.011111111111111112,
+      "generated": true
+    },
+    "gen_sache_14613": {
+      "id": "gen_sache_14613",
+      "lang": "de",
+      "sources": 427,
+      "ms": 121,
+      "goldSize": 3,
+      "recall": 1,
+      "precision": 0.00702576112412178,
+      "generated": true
+    },
+    "gen_sache_13624": {
+      "id": "gen_sache_13624",
+      "lang": "de",
+      "sources": 481,
+      "ms": 108,
+      "goldSize": 5,
+      "recall": 1,
+      "precision": 0.010395010395010396,
+      "generated": true
+    },
+    "gen_sache_16865": {
+      "id": "gen_sache_16865",
+      "lang": "de",
+      "sources": 696,
+      "ms": 87,
+      "goldSize": 8,
+      "recall": 1,
+      "precision": 0.011494252873563218,
+      "generated": true
+    },
+    "gen_sache_11311": {
+      "id": "gen_sache_11311",
+      "lang": "de",
+      "sources": 457,
+      "ms": 92,
+      "goldSize": 13,
+      "recall": 1,
+      "precision": 0.028446389496717725,
+      "generated": true
+    },
+    "gen_person_20535": {
+      "id": "gen_person_20535",
+      "lang": "de",
+      "sources": 418,
+      "ms": 85,
+      "goldSize": 7,
+      "recall": 0.8571428571428571,
+      "precision": 0.014354066985645933,
+      "generated": true
+    },
+    "gen_person_19328": {
+      "id": "gen_person_19328",
+      "lang": "de",
+      "sources": 408,
+      "ms": 87,
+      "goldSize": 7,
+      "recall": 1,
+      "precision": 0.01715686274509804,
+      "generated": true
+    },
+    "gen_person_31791": {
+      "id": "gen_person_31791",
+      "lang": "de",
+      "sources": 431,
+      "ms": 83,
+      "goldSize": 4,
+      "recall": 0,
+      "precision": 0,
+      "generated": true
+    },
+    "gen_person_41626": {
+      "id": "gen_person_41626",
+      "lang": "de",
+      "sources": 428,
+      "ms": 80,
+      "goldSize": 21,
+      "recall": 0.8095238095238095,
+      "precision": 0.0397196261682243,
+      "generated": true
+    },
+    "gen_person_10099": {
+      "id": "gen_person_10099",
+      "lang": "de",
+      "sources": 425,
+      "ms": 90,
+      "goldSize": 4,
+      "recall": 0.5,
+      "precision": 0.004705882352941176,
+      "generated": true
+    },
+    "gen_person_29141": {
+      "id": "gen_person_29141",
+      "lang": "de",
+      "sources": 722,
+      "ms": 88,
+      "goldSize": 28,
+      "recall": 0.35714285714285715,
+      "precision": 0.013850415512465374,
+      "generated": true
+    },
+    "gen_person_19938": {
+      "id": "gen_person_19938",
+      "lang": "de",
+      "sources": 413,
+      "ms": 85,
+      "goldSize": 4,
+      "recall": 1,
+      "precision": 0.009685230024213076,
+      "generated": true
+    },
+    "gen_person_18366": {
+      "id": "gen_person_18366",
+      "lang": "de",
+      "sources": 547,
+      "ms": 81,
+      "goldSize": 5,
+      "recall": 0,
+      "precision": 0,
+      "generated": true
+    },
+    "gen_person_54952": {
+      "id": "gen_person_54952",
+      "lang": "de",
+      "sources": 434,
       "ms": 84,
-      "pass": false
+      "goldSize": 3,
+      "recall": 0,
+      "precision": 0,
+      "generated": true
+    },
+    "gen_person_62199": {
+      "id": "gen_person_62199",
+      "lang": "de",
+      "sources": 426,
+      "ms": 85,
+      "goldSize": 4,
+      "recall": 1,
+      "precision": 0.009389671361502348,
+      "generated": true
     }
   }
 }

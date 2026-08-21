@@ -1,0 +1,680 @@
+{
+  "generatedAt": "2026-08-21T11:47:17.010Z",
+  "seed": 20260821,
+  "questions": [
+    {
+      "id": "gen_sache_16822",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Apg 3,21?",
+      "subject": "Apg 3,21",
+      "offen": [
+        "16822",
+        "19995",
+        "20045",
+        "20272",
+        "79187"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_11963",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Richter?",
+      "subject": "Richter",
+      "offen": [
+        "11963",
+        "12231",
+        "12881",
+        "15971",
+        "18550",
+        "20359",
+        "21371",
+        "21842",
+        "23568",
+        "24619",
+        "24830",
+        "26203",
+        "30591",
+        "30634",
+        "36684",
+        "41659",
+        "60033",
+        "70454",
+        "74746",
+        "77082",
+        "78331",
+        "91509"
+      ],
+      "intern": [
+        "27572",
+        "46202"
+      ]
+    },
+    {
+      "id": "gen_sache_22949",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Kontroverse Johannes Sturm - Andreae?",
+      "subject": "Kontroverse Johannes Sturm - Andreae",
+      "offen": [
+        "22949",
+        "23092",
+        "23100",
+        "23107"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_10583",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Amtsenthebung von Johannes Sturm (1581)?",
+      "subject": "Amtsenthebung von Johannes Sturm (1581)",
+      "offen": [
+        "10583",
+        "22911",
+        "23022",
+        "23100",
+        "23128",
+        "23169",
+        "23173",
+        "23303",
+        "23469",
+        "23534",
+        "33665",
+        "48947",
+        "87581"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_11144",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Ausleihe von Büchern?",
+      "subject": "Ausleihe von Büchern",
+      "offen": [
+        "11144",
+        "11156",
+        "11253",
+        "15078",
+        "15314",
+        "15447",
+        "15461",
+        "15551",
+        "15743",
+        "15801",
+        "16232",
+        "16349",
+        "16387",
+        "16420",
+        "16475",
+        "16619",
+        "16702",
+        "16891",
+        "17189",
+        "17488",
+        "18601",
+        "18747",
+        "18772",
+        "18851",
+        "19577",
+        "19726",
+        "20814",
+        "21030",
+        "21167",
+        "24833",
+        "26322",
+        "27874",
+        "27904",
+        "28194",
+        "28195",
+        "28330",
+        "30286",
+        "31192",
+        "37345",
+        "42259",
+        "46048",
+        "64156",
+        "92714"
+      ],
+      "intern": [
+        "64906"
+      ]
+    },
+    {
+      "id": "gen_sache_29004",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Glockenturm?",
+      "subject": "Glockenturm",
+      "offen": [
+        "29004",
+        "35775",
+        "79662"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_13769",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Tartaren?",
+      "subject": "Tartaren",
+      "offen": [
+        "13769",
+        "15496",
+        "18021",
+        "21781",
+        "21812",
+        "22411",
+        "24697",
+        "29313",
+        "37252",
+        "40812",
+        "57450"
+      ],
+      "intern": [
+        "62702"
+      ]
+    },
+    {
+      "id": "gen_sache_22913",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Württembergische Landesordnung (1567)?",
+      "subject": "Württembergische Landesordnung (1567)",
+      "offen": [
+        "22913",
+        "28359",
+        "28521",
+        "51102"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_10467",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Empfangsbestätigung eines Briefes?",
+      "subject": "Empfangsbestätigung eines Briefes",
+      "offen": [
+        "10467",
+        "13502",
+        "14063",
+        "14180",
+        "14351",
+        "19147",
+        "19158",
+        "20611",
+        "26303",
+        "28648",
+        "29023",
+        "34421",
+        "35734",
+        "43010",
+        "44379",
+        "44392",
+        "49299",
+        "58638",
+        "63938",
+        "64996",
+        "65781",
+        "84027",
+        "86656",
+        "91570",
+        "95438"
+      ],
+      "intern": [
+        "23954",
+        "30875"
+      ]
+    },
+    {
+      "id": "gen_sache_17949",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Päpstliche Truppen?",
+      "subject": "Päpstliche Truppen",
+      "offen": [
+        "17949",
+        "18240",
+        "19385",
+        "39764"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_10605",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Lehre der Straßburger Kirche?",
+      "subject": "Lehre der Straßburger Kirche",
+      "offen": [
+        "10605",
+        "15753",
+        "16663",
+        "16812",
+        "17290",
+        "20719",
+        "23133",
+        "38864",
+        "48721",
+        "58839",
+        "79237"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_18254",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Todessehnsucht?",
+      "subject": "Todessehnsucht",
+      "offen": [
+        "18254",
+        "21543",
+        "24508",
+        "25093",
+        "25147",
+        "25838",
+        "26022",
+        "27457",
+        "31265",
+        "35588",
+        "70496"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_18682",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Lk 21,28?",
+      "subject": "Lk 21,28",
+      "offen": [
+        "18682",
+        "28159",
+        "57659"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_10310",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Promotion des Stephan Sylvius (1558/59)?",
+      "subject": "Promotion des Stephan Sylvius (1558/59)",
+      "offen": [
+        "10310",
+        "17601",
+        "17698",
+        "21923"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_10228",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Bergisches Buch (1577)?",
+      "subject": "Bergisches Buch (1577)",
+      "offen": [
+        "10228",
+        "10524",
+        "11935",
+        "21785",
+        "21793",
+        "21831",
+        "21898",
+        "22064",
+        "22132",
+        "22152",
+        "22817",
+        "22854",
+        "23243",
+        "23939",
+        "33066",
+        "35962",
+        "39633",
+        "40837",
+        "44534",
+        "44574",
+        "47995",
+        "49733",
+        "60143",
+        "62668",
+        "63942",
+        "64489",
+        "66453",
+        "68898",
+        "70559",
+        "70811",
+        "71236",
+        "74103",
+        "74639",
+        "77855",
+        "80140",
+        "82939",
+        "84567",
+        "85644",
+        "85907",
+        "94423",
+        "96236",
+        "96531",
+        "97260"
+      ],
+      "intern": [
+        "30673",
+        "31207",
+        "31263"
+      ]
+    },
+    {
+      "id": "gen_sache_14714",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Wahl des Studienorts?",
+      "subject": "Wahl des Studienorts",
+      "offen": [
+        "14714",
+        "16685",
+        "17422",
+        "18933",
+        "21117"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_14613",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Schlacht bei Mühlberg (24. April 1547)?",
+      "subject": "Schlacht bei Mühlberg (24. April 1547)",
+      "offen": [
+        "14613",
+        "14614",
+        "14620"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_13624",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Kirchen in den Niederlanden?",
+      "subject": "Kirchen in den Niederlanden",
+      "offen": [
+        "13624",
+        "26333",
+        "32887",
+        "46900",
+        "93908"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_16865",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Vogel, Dialogus von der Rechtfertigung, 1557 (VD16 V 2085)?",
+      "subject": "Vogel, Dialogus von der Rechtfertigung, 1557 (VD16 V 2085)",
+      "offen": [
+        "16865",
+        "16956",
+        "17213",
+        "17669",
+        "30578",
+        "32310",
+        "38893",
+        "55009"
+      ],
+      "intern": [
+        "45032"
+      ]
+    },
+    {
+      "id": "gen_sache_11311",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Beiliegender Zettel?",
+      "subject": "Beiliegender Zettel",
+      "offen": [
+        "11311",
+        "12231",
+        "12553",
+        "12622",
+        "13855",
+        "13905",
+        "14253",
+        "16683",
+        "21543",
+        "25955",
+        "30458",
+        "39558",
+        "56404"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_20535",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Johannes Freder d. J. an Konrad Hubert?",
+      "sender": "Johannes Freder d. J.",
+      "recipient": "Konrad Hubert",
+      "offen": [
+        "20535",
+        "20636",
+        "20775",
+        "20818",
+        "20975",
+        "21220",
+        "21445"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_19328",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Thomas Erastus an Johann Konrad Ulmer?",
+      "sender": "Thomas Erastus",
+      "recipient": "Johann Konrad Ulmer",
+      "offen": [
+        "19328",
+        "19421",
+        "19661",
+        "19680",
+        "19900",
+        "20309",
+        "22161"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_31791",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Jakob Andreae an [Ludwig, Herzog von Württemberg]?",
+      "sender": "Jakob Andreae",
+      "recipient": "[Ludwig, Herzog von Württemberg]",
+      "offen": [
+        "31791",
+        "42834",
+        "43013",
+        "49545"
+      ],
+      "intern": [
+        "40934",
+        "53991"
+      ]
+    },
+    {
+      "id": "gen_person_41626",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Ludwig Lucius an Johann Jakob Grynaeus?",
+      "sender": "Ludwig Lucius",
+      "recipient": "Johann Jakob Grynaeus",
+      "offen": [
+        "41626",
+        "45491",
+        "47596",
+        "47996",
+        "50557",
+        "51603",
+        "58590",
+        "64207",
+        "71863",
+        "72253",
+        "73592",
+        "77583",
+        "80598",
+        "81060",
+        "82890",
+        "83635",
+        "86454",
+        "95507",
+        "96618",
+        "98190",
+        "98668"
+      ],
+      "intern": [
+        "35777",
+        "37022",
+        "41672",
+        "41707",
+        "41745",
+        "51987",
+        "52283",
+        "66506",
+        "72160",
+        "83463",
+        "95746"
+      ]
+    },
+    {
+      "id": "gen_person_10099",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Philipp I. der Großmütige, Landgraf von Hessen an Johannes Brenz (d. Ä.)?",
+      "sender": "Philipp I. der Großmütige, Landgraf von Hessen",
+      "recipient": "Johannes Brenz (d. Ä.)",
+      "offen": [
+        "10099",
+        "11720",
+        "11740",
+        "11828"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_29141",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Christoph, Herzog von Württemberg an [Samuel Heiland], Magister Domus?",
+      "sender": "Christoph, Herzog von Württemberg",
+      "recipient": "[Samuel Heiland], Magister Domus",
+      "offen": [
+        "29141",
+        "30624",
+        "30699",
+        "31669",
+        "34681",
+        "36114",
+        "39248",
+        "40597",
+        "42812",
+        "47022",
+        "48835",
+        "60095",
+        "62250",
+        "63309",
+        "64400",
+        "65199",
+        "66211",
+        "66310",
+        "68235",
+        "77660",
+        "77891",
+        "81145",
+        "83188",
+        "91673",
+        "96654",
+        "97644",
+        "97939",
+        "98284"
+      ],
+      "intern": [
+        "63174"
+      ]
+    },
+    {
+      "id": "gen_person_19938",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Petrus Dathenus an Arnold Crusius?",
+      "sender": "Petrus Dathenus",
+      "recipient": "Arnold Crusius",
+      "offen": [
+        "19938",
+        "42990",
+        "42992",
+        "42993"
+      ],
+      "intern": [
+        "22999",
+        "42994",
+        "42996"
+      ]
+    },
+    {
+      "id": "gen_person_18366",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Württembergische Theologen an [Christoph, Herzog von Württemberg]?",
+      "sender": "Württembergische Theologen",
+      "recipient": "[Christoph, Herzog von Württemberg]",
+      "offen": [
+        "18366",
+        "18390",
+        "28519",
+        "59851",
+        "97930"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_54952",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Heinrich Weickersreuter, Abt an Christoph, Herzog von Württemberg?",
+      "sender": "Heinrich Weickersreuter, Abt",
+      "recipient": "Christoph, Herzog von Württemberg",
+      "offen": [
+        "54952",
+        "57251",
+        "74768"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_62199",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Victorinus Strigel an Franz Raphael?",
+      "sender": "Victorinus Strigel",
+      "recipient": "Franz Raphael",
+      "offen": [
+        "62199",
+        "79547",
+        "91452",
+        "99286"
+      ],
+      "intern": []
+    }
+  ]
+}
