@@ -1,0 +1,99 @@
+{
+  "mode": "retrieval",
+  "baseUrl": "http://localhost:5055",
+  "questions": {
+    "de_enum_heidelberg": {
+      "id": "de_enum_heidelberg",
+      "lang": "de",
+      "sources": 565,
+      "ms": 2076,
+      "goldSize": 46,
+      "recall": 0.9782608695652174,
+      "precision": 0.07964601769911504
+    },
+    "en_enum_heidelberg": {
+      "id": "en_enum_heidelberg",
+      "lang": "en",
+      "sources": 30,
+      "ms": 91,
+      "goldSize": 46,
+      "recall": 0.2608695652173913,
+      "precision": 0.4
+    },
+    "fr_enum_heidelberg": {
+      "id": "fr_enum_heidelberg",
+      "lang": "fr",
+      "sources": 30,
+      "ms": 89,
+      "goldSize": 46,
+      "recall": 0.2608695652173913,
+      "precision": 0.4
+    },
+    "zh_enum_heidelberg": {
+      "id": "zh_enum_heidelberg",
+      "lang": "zh",
+      "sources": 30,
+      "ms": 90,
+      "goldSize": 46,
+      "recall": 0.06521739130434782,
+      "precision": 0.1
+    },
+    "de_variant_frage60": {
+      "id": "de_variant_frage60",
+      "lang": "de",
+      "sources": 572,
+      "ms": 81,
+      "missing": [
+        "25851"
+      ],
+      "found": false
+    },
+    "de_person_olevian_bullinger": {
+      "id": "de_person_olevian_bullinger",
+      "lang": "de",
+      "sources": 349,
+      "ms": 89,
+      "goldSize": 3,
+      "recall": 1,
+      "precision": 0.008595988538681949
+    },
+    "de_date_1563": {
+      "id": "de_date_1563",
+      "lang": "de",
+      "sources": 434,
+      "ms": 89,
+      "goldSize": 384,
+      "recall": 0.0625,
+      "precision": 0.055299539170506916
+    },
+    "de_fact_latein": {
+      "id": "de_fact_latein",
+      "lang": "de",
+      "sources": 228,
+      "ms": 94,
+      "missing": [],
+      "found": true
+    },
+    "smalltalk_zh": {
+      "id": "smalltalk_zh",
+      "lang": "zh",
+      "sources": 30,
+      "ms": 263,
+      "pass": false
+    },
+    "smalltalk_de": {
+      "id": "smalltalk_de",
+      "lang": "de",
+      "sources": 30,
+      "ms": 84,
+      "pass": false
+    },
+    "offtopic_de": {
+      "id": "offtopic_de",
+      "lang": "de",
+      "sources": 30,
+      "ms": 84,
+      "pass": false
+    }
+  }
+}

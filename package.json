@@ -7,6 +7,9 @@
   "scripts": {
     "build:corpus": "node scripts/buildCorpus.js",
     "build:index": "node scripts/buildIndex.js",
+    "build:gold": "node test/buildGoldSets.js",
+    "eval": "node test/eval.js",
+    "eval:full": "node test/eval.js --full",
     "start": "node server/server.js"
   },
   "dependencies": {

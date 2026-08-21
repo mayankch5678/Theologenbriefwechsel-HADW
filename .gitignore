@@ -6,3 +6,6 @@ data/embeddings.bin
 data/corpus.jsonl
 
 *.bak
+
+# Per-run eval output — baseline.json and fixtures/ ARE committed.
+test/results-latest.json

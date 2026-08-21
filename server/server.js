@@ -303,6 +303,40 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
+// Retrieval-only endpoint for the evaluation harness (test/). Runs the exact
+// same pipeline as /api/chat but stops before generation, so eval runs are
+// fast and deterministic — retrieval quality can be measured without the
+// latency and nondeterminism of a chat-model call. Not used by the UI.
+app.post("/api/retrieve", async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "Missing 'message' string in request body." });
+    }
+    const queryVec = await embedQuery(message);
+    const { hits, subjects, keywordMatches, belowFloor } = retrieve(queryVec, message);
+    res.json({
+      retrieval: {
+        matchedSubjects: subjects,
+        keywordMatches,
+        embeddingTopK: TOP_K,
+        minScore: MIN_SCORE,
+        belowFloor,
+        matches: hits.length,
+        inContext: Math.min(hits.length, CONTEXT_MAX),
+      },
+      sources: hits.map(({ record: r, score }) => ({
+        id: r.id,
+        score: Number(score.toFixed(3)),
+        sichtbar: r.sichtbar,
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
 app.get("/api/health", (req, res) => {
   res.json({
     ok: true,

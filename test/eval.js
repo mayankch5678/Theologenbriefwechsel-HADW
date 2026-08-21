@@ -1,0 +1,272 @@
+// Retrieval evaluation harness (handoff doc §7 Phase 1).
+//
+// Asks the running server a fixed set of questions and scores the returned
+// sources against gold sets derived from the editors' own curated data
+// (build with `npm run build:gold` after every mongorestore).
+//
+//   npm run eval        retrieval only (POST /api/retrieve) — fast, free,
+//                       deterministic; the everyday regression check
+//   npm run eval:full   end-to-end (POST /api/chat) — adds generation-side
+//                       checks: answer language, citation integrity, refusal
+//                       on empty/irrelevant context. Costs DeepSeek calls.
+//
+// Exit code 1 iff a hard assertion fails. Metrics themselves never fail the
+// run — they are compared against test/baseline.json and regressions are
+// reported, because at this stage the point is measuring the status quo, not
+// gating on it. Delete baseline.json to re-baseline after an intended change.
+//
+// Hard assertions:
+//   - no source with sichtbar === "intern" (the privacy boundary, §3.5)
+//   - no source whose id is in a gold set's intern list (belt and braces:
+//     catches the leak even if the sichtbar field itself were mangled)
+//   - [full mode] every Brief id cited in the answer text appears in sources
+//     (an answer must not invent citations)
+
+import { readFile, writeFile, readdir } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const BASE_URL = process.env.EVAL_BASE_URL || "http://localhost:5055";
+const FULL = process.argv.includes("--full");
+const BASELINE_FILE = path.join(__dirname, "baseline.json");
+const RESULTS_FILE = path.join(__dirname, "results-latest.json");
+
+// ---------------------------------------------------------------------------
+// Question set: ~11 questions across the shapes listed in the handoff (§7
+// Phase 1): enumerative in four languages, qualified-variant, person-centred,
+// date-ranged, single-fact, and small-talk/off-topic controls.
+//
+// gold        name of a fixture whose offen list is the full correct answer
+// mustInclude ids that must be present for the retrieval to count as usable,
+//             even when a full gold set makes no sense for the question
+// expectEmpty true for questions where the only correct source list is empty
+//             (small talk / out of domain) — sources returned = failure
+const QUESTIONS = [
+  {
+    id: "de_enum_heidelberg",
+    lang: "de",
+    text: "Welche Briefe erwähnen den Heidelberger Katechismus?",
+    gold: "heidelberg_katechismus",
+  },
+  {
+    id: "en_enum_heidelberg",
+    lang: "en",
+    text: "Which letters mention the Heidelberg Catechism?",
+    gold: "heidelberg_katechismus",
+  },
+  {
+    id: "fr_enum_heidelberg",
+    lang: "fr",
+    text: "Quelles lettres mentionnent le catéchisme de Heidelberg ?",
+    gold: "heidelberg_katechismus",
+  },
+  {
+    id: "zh_enum_heidelberg",
+    lang: "zh",
+    text: "哪些信件提到了海德堡教理问答？",
+    gold: "heidelberg_katechismus",
+  },
+  {
+    // Letter 25851 is tagged only with the comma-qualified variant
+    // "Heidelberger Katechismus, Frage 60" and is the known victim of the
+    // substring under-match (§6.1) — this question asks for it by name.
+    id: "de_variant_frage60",
+    lang: "de",
+    text: "Welche Briefe betreffen Frage 60 des Heidelberger Katechismus?",
+    mustInclude: ["25851"],
+  },
+  {
+    id: "de_person_olevian_bullinger",
+    lang: "de",
+    text: "Welche Briefe schrieb Kaspar Olevian an Heinrich Bullinger?",
+    gold: "olevian_an_bullinger",
+  },
+  {
+    // Structurally unanswerable by top-K retrieval (§6.7) — kept in the set
+    // to quantify that gap, not because current recall could be good.
+    id: "de_date_1563",
+    lang: "de",
+    text: "Welche Briefe stammen aus dem Jahr 1563?",
+    gold: "jahr_1563",
+  },
+  {
+    // Single fact: Olevian sent Calvin/Beza the Latin translation of the
+    // catechism — regest of 18495. The letter must be retrievable.
+    id: "de_fact_latein",
+    lang: "de",
+    text: "Wer schickte Calvin die lateinische Übersetzung des Heidelberger Katechismus?",
+    mustInclude: ["18495"],
+  },
+  { id: "smalltalk_zh", lang: "zh", text: "嗨", expectEmpty: true },
+  { id: "smalltalk_de", lang: "de", text: "Hallo, wie geht es dir?", expectEmpty: true },
+  { id: "offtopic_de", lang: "de", text: "Was ist das beste Rezept für Pizza?", expectEmpty: true },
+];
+
+// ---------------------------------------------------------------------------
+
+async function loadFixtures() {
+  const dir = path.join(__dirname, "fixtures");
+  const fixtures = {};
+  let files;
+  try {
+    files = await readdir(dir);
+  } catch {
+    console.error(`No fixtures found in ${dir} — run "npm run build:gold" first (needs MongoDB).`);
+    process.exit(1);
+  }
+  for (const f of files.filter((f) => f.endsWith(".json"))) {
+    const set = JSON.parse(await readFile(path.join(dir, f), "utf8"));
+    fixtures[set.name] = set;
+  }
+  return fixtures;
+}
+
+async function ask(question) {
+  const endpoint = FULL ? "/api/chat" : "/api/retrieve";
+  const res = await fetch(BASE_URL + endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: question }),
+  });
+  if (!res.ok) throw new Error(`${endpoint} -> ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json();
+}
+
+// Crude but sufficient language detection for the alignment check: CJK
+// presence wins, otherwise the stopword family with the most hits. Only used
+// to compare answer language against question language, never for retrieval.
+function detectLang(text) {
+  if (/[一-鿿]/.test(text)) return "zh";
+  const t = ` ${text.toLowerCase()} `;
+  const count = (words) => words.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);
+  const scores = {
+    de: count(["der", "die", "das", "und", "nicht", "ein", "eine", "den", "im", "mit", "von", "zu"]),
+    en: count(["the", "and", "of", "to", "in", "is", "that", "which", "with", "from"]),
+    fr: count(["le", "la", "les", "et", "de", "des", "que", "dans", "une", "est"]),
+  };
+  return Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+// The refusal the server hardcodes plus the phrasings the system prompt tells
+// the model to use when the context does not answer the question.
+function looksLikeRefusal(answer) {
+  return /kein hinreichend relevanter Brief|keine Informationen|keine relevanten|stelle .*konkrete Frage|spezifische Frage/i.test(
+    answer
+  );
+}
+
+function pct(x) {
+  return (100 * x).toFixed(1) + "%";
+}
+
+async function main() {
+  const fixtures = await loadFixtures();
+  const hardFailures = [];
+  const rows = [];
+  const results = { mode: FULL ? "full" : "retrieval", baseUrl: BASE_URL, questions: {} };
+
+  for (const q of QUESTIONS) {
+    process.stdout.write(`${q.id} ... `);
+    const started = Date.now();
+    const data = await ask(q.text);
+    const ms = Date.now() - started;
+    const ids = data.sources.map((s) => String(s.id));
+
+    // --- hard assertions: the privacy boundary, checked on every question ---
+    const leakByFlag = data.sources.filter((s) => s.sichtbar === "intern").map((s) => String(s.id));
+    const internIds = new Set(Object.values(fixtures).flatMap((f) => f.intern));
+    const leakById = ids.filter((id) => internIds.has(id));
+    for (const id of new Set([...leakByFlag, ...leakById])) {
+      hardFailures.push(`${q.id}: intern letter ${id} appeared in sources`);
+    }
+
+    // --- metrics ---
+    const row = { id: q.id, lang: q.lang, sources: ids.length, ms };
+    if (q.gold) {
+      const gold = new Set(fixtures[q.gold].offen);
+      const correct = ids.filter((id) => gold.has(id)).length;
+      row.goldSize = gold.size;
+      row.recall = correct / gold.size;
+      row.precision = ids.length ? correct / ids.length : 0;
+    }
+    if (q.mustInclude) {
+      row.missing = q.mustInclude.filter((id) => !ids.includes(id));
+      row.found = row.missing.length === 0;
+    }
+    if (q.expectEmpty) {
+      // Correct behaviour is zero sources; every returned source is noise.
+      row.pass = ids.length === 0;
+    }
+
+    // --- generation-side checks (full mode only) ---
+    if (FULL && typeof data.answer === "string") {
+      row.answerLang = detectLang(data.answer);
+      row.langAligned = row.answerLang === q.lang;
+      const cited = [...new Set([...data.answer.matchAll(/Brief\s+(\d{3,6})/g)].map((m) => m[1]))];
+      const invented = cited.filter((id) => !ids.includes(id));
+      row.citedCount = cited.length;
+      if (invented.length) {
+        hardFailures.push(`${q.id}: answer cites Brief ${invented.join(", ")} not present in sources`);
+      }
+      if (q.expectEmpty) row.refused = looksLikeRefusal(data.answer);
+    }
+
+    results.questions[q.id] = row;
+    rows.push(row);
+    console.log(`${ids.length} sources, ${ms} ms`);
+  }
+
+  // --- report ---------------------------------------------------------------
+  console.log("\n=== Retrieval metrics ===");
+  for (const r of rows) {
+    const parts = [`sources=${r.sources}`];
+    if (r.recall !== undefined) parts.push(`recall=${pct(r.recall)} precision=${pct(r.precision)} (gold ${r.goldSize})`);
+    if (r.found !== undefined) parts.push(r.found ? "mustInclude ✓" : `MISSING ${r.missing.join(",")}`);
+    if (r.pass !== undefined) parts.push(r.pass ? "empty ✓" : `expected 0 sources, got ${r.sources}`);
+    if (FULL && r.langAligned !== undefined)
+      parts.push(r.langAligned ? `lang ✓ (${r.answerLang})` : `LANG ${r.lang}->${r.answerLang}`);
+    if (FULL && r.refused !== undefined) parts.push(r.refused ? "refused ✓" : "DID NOT REFUSE");
+    console.log(`  ${r.id.padEnd(28)} ${parts.join("  ")}`);
+  }
+
+  // --- baseline comparison --------------------------------------------------
+  let baseline = null;
+  try {
+    baseline = JSON.parse(await readFile(BASELINE_FILE, "utf8"));
+  } catch {
+    /* first run */
+  }
+  if (baseline && baseline.mode === results.mode) {
+    console.log("\n=== vs baseline ===");
+    for (const r of rows) {
+      const b = baseline.questions[r.id];
+      if (!b) continue;
+      const deltas = [];
+      for (const k of ["recall", "precision"]) {
+        if (r[k] !== undefined && b[k] !== undefined && Math.abs(r[k] - b[k]) > 0.005) {
+          deltas.push(`${k} ${pct(b[k])} -> ${pct(r[k])}${r[k] < b[k] ? "  ⚠ REGRESSION" : ""}`);
+        }
+      }
+      if (b.sources !== r.sources) deltas.push(`sources ${b.sources} -> ${r.sources}`);
+      if (deltas.length) console.log(`  ${r.id.padEnd(28)} ${deltas.join("  ")}`);
+    }
+  } else if (!baseline) {
+    await writeFile(BASELINE_FILE, JSON.stringify(results, null, 2) + "\n");
+    console.log(`\nNo baseline existed — wrote this run as baseline: ${BASELINE_FILE}`);
+  }
+  await writeFile(RESULTS_FILE, JSON.stringify(results, null, 2) + "\n");
+
+  // --- verdict --------------------------------------------------------------
+  if (hardFailures.length) {
+    console.error("\n=== HARD FAILURES ===");
+    for (const f of hardFailures) console.error("  ✗ " + f);
+    process.exit(1);
+  }
+  console.log("\nAll hard assertions passed.");
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
