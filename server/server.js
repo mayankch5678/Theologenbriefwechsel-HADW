@@ -34,6 +34,12 @@ const TOP_K = Number(process.env.TOP_K || 30); // embedding-only fallback path
 // Only what we send to DeepSeek is capped — the API response stays uncapped.
 const CONTEXT_MAX = Number(process.env.CONTEXT_MAX || 60);
 const MIN_SUBJECT_LEN = 4; // guards against junk matches on very short subjects
+// A matched subject carried by more letters than this is a genus term
+// ("Briefe", "Katechismus", "Nachrichten") — unioning its whole bucket is
+// what pushed precision to 8% (558 sources for a 45-letter question). Such
+// terms are dropped from the keyword path; the embedding path still covers
+// the query. Curated enumerable subjects sit well below this line.
+const MAX_SUBJECT_BUCKET = Number(process.env.MAX_SUBJECT_BUCKET || 150);
 // Relevance floor applied to the merged result set: anything scoring below this
 // is dropped outright and never reaches the model or the citations.
 const MIN_SCORE = Number(process.env.MIN_SCORE || 0.3);
@@ -170,21 +176,44 @@ function rankByCosine(queryVec, candidateIndices) {
 // "Reichstag" query. Returns public record indices plus the subjects that hit.
 function matchSubjects(query) {
   const q = normalize(query);
-  if (!q) return { indices: [], subjects: [] };
+  if (!q) return { indices: [], subjects: [], droppedSubjects: [] };
 
   // Pad both sides so a subject only matches on whole words: without this,
   // the subject "Hand" matches inside "handeln" and drags in unrelated letters.
   const padded = ` ${q} `;
 
-  const matched = new Set();
-  const subjects = [];
+  const candidates = [];
   for (const [form, bucket] of subjectIndex) {
     if (padded.includes(` ${form} `) || (q.length >= MIN_SUBJECT_LEN && ` ${form} `.includes(padded))) {
-      subjects.push(form);
-      for (const i of bucket) matched.add(i);
+      candidates.push({ form, bucket });
     }
   }
-  return { indices: [...matched], subjects };
+
+  // Most-specific-wins: when "heidelberger katechismus" matched, the also-
+  // matched "katechismus" (and the unavoidable "briefe" in a German question)
+  // adds only its genus bucket — hundreds of unrelated letters. A matched
+  // form contained word-for-word in a longer matched form is dropped; what
+  // survives is then size-capped (see MAX_SUBJECT_BUCKET).
+  const subjects = [];
+  const droppedSubjects = [];
+  const matched = new Set();
+  for (const c of candidates) {
+    const covered = candidates.some(
+      (o) => o.form !== c.form && ` ${o.form} `.includes(` ${c.form} `)
+    );
+    if (covered) {
+      droppedSubjects.push(`${c.form} (covered by more specific match)`);
+      continue;
+    }
+    const size = new Set(c.bucket).size;
+    if (size > MAX_SUBJECT_BUCKET) {
+      droppedSubjects.push(`${c.form} (${size} letters, generic)`);
+      continue;
+    }
+    subjects.push(c.form);
+    for (const i of c.bucket) matched.add(i);
+  }
+  return { indices: [...matched], subjects, droppedSubjects };
 }
 
 // Hybrid retrieval over public records only. There is no either/or: both
@@ -197,7 +226,7 @@ function matchSubjects(query) {
 // keyword-only path would let one of those replace a good embedding search
 // with a handful of unrelated letters.
 function retrieve(queryVec, message) {
-  const { indices, subjects } = matchSubjects(message);
+  const { indices, subjects, droppedSubjects } = matchSubjects(message);
   const ranked = rankByCosine(queryVec, publicIndices);
 
   const keyword = new Set(indices);
@@ -219,7 +248,7 @@ function retrieve(queryVec, message) {
     hits.push(hit);
   }
 
-  return { hits, subjects, keywordMatches: keyword.size, belowFloor };
+  return { hits, subjects, droppedSubjects, keywordMatches: keyword.size, belowFloor };
 }
 
 function buildContext(hits) {
@@ -280,7 +309,7 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const queryVec = await embedQuery(message);
-    const { hits, subjects, keywordMatches, belowFloor } = retrieve(queryVec, message);
+    const { hits, subjects, droppedSubjects, keywordMatches, belowFloor } = retrieve(queryVec, message);
 
     // Nothing cleared the relevance floor: answering from an empty source list
     // would only invite invention, so say so instead of prompting the model.
@@ -293,6 +322,7 @@ app.post("/api/chat", async (req, res) => {
       answer,
       retrieval: {
         matchedSubjects: subjects,
+        droppedSubjects,
         keywordMatches,
         embeddingTopK: TOP_K,
         minScore: MIN_SCORE,
@@ -331,10 +361,11 @@ app.post("/api/retrieve", async (req, res) => {
       return res.status(400).json({ error: "Missing 'message' string in request body." });
     }
     const queryVec = await embedQuery(message);
-    const { hits, subjects, keywordMatches, belowFloor } = retrieve(queryVec, message);
+    const { hits, subjects, droppedSubjects, keywordMatches, belowFloor } = retrieve(queryVec, message);
     res.json({
       retrieval: {
         matchedSubjects: subjects,
+        droppedSubjects,
         keywordMatches,
         embeddingTopK: TOP_K,
         minScore: MIN_SCORE,
