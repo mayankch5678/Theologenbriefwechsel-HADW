@@ -40,9 +40,13 @@ const MIN_SUBJECT_LEN = 4; // guards against junk matches on very short subjects
 // terms are dropped from the keyword path; the embedding path still covers
 // the query. Curated enumerable subjects sit well below this line.
 const MAX_SUBJECT_BUCKET = Number(process.env.MAX_SUBJECT_BUCKET || 150);
-// Relevance floor applied to the merged result set: anything scoring below this
-// is dropped outright and never reaches the model or the citations.
-const MIN_SCORE = Number(process.env.MIN_SCORE || 0.3);
+// Relevance floor for *embedding-only* hits. bge-m3 cosine scores live in a
+// narrow high band — measured on this corpus: greeting/off-topic queries top
+// out at 0.44–0.49 while genuine questions reach 0.59–0.64 — so 0.5 is the
+// empirical knee (the old 0.3 admitted 98.8% of the corpus and filtered
+// nothing). Keyword hits are exempt: they are deterministic matches against
+// the editors' own tags and routinely score 0.30–0.45 on cosine.
+const MIN_SCORE = Number(process.env.MIN_SCORE || 0.5);
 const PORT = Number(process.env.PORT || 5055);
 
 if (!process.env.DEEPSEEK_API_KEY) {
@@ -241,7 +245,9 @@ function retrieve(queryVec, message) {
     if (!keyword.has(hit.index) && !topK.has(hit.index)) continue;
     if (seenIds.has(hit.record.id)) continue;
     seenIds.add(hit.record.id);
-    if (hit.score < MIN_SCORE) {
+    // The floor gates only the fuzzy path: a keyword hit is backed by a
+    // curated tag and stays in regardless of its cosine score.
+    if (!keyword.has(hit.index) && hit.score < MIN_SCORE) {
       belowFloor++;
       continue;
     }
