@@ -142,6 +142,20 @@ async function main() {
     const cmif = unwrap(doc.cmif) || null;
     const url = BASE_URL + shortId;
 
+    // Primary-source text. 2,215 letters have a verbatim transcription and
+    // 31k an incipit — previously discarded entirely (the old "empty across
+    // the whole DB" claim was wrong). They are NOT mixed into the embedded
+    // `text`: early-modern German/Latin dilutes the modern-German regest
+    // signal (a lesson the parallel rag/ project learned the hard way).
+    // Instead they ride along on the record so the answer context can show
+    // the model actual primary-source evidence for its citations.
+    // Some records carry non-string values in these fields — guard the type.
+    const asString = (x) => (typeof x === "string" ? x.trim() : "");
+    const incipit = asString(unwrap(doc.incipit)) || null;
+    const erlaeuterung = asString(unwrap(doc.erlaeuterung)) || null;
+    const volltextFull = asString(unwrap(doc.transkription?.volltext));
+    const volltext = volltextFull ? volltextFull.slice(0, 1500) : null;
+
     // Every record gets a regest: the editorial one where it exists, otherwise
     // a synthetic metadata abstract, so no letter ends up without searchable text.
     const regestSynthetic = !rawRegest;
@@ -185,7 +199,11 @@ async function main() {
       keywordSubjects,
       subjectVariants,
       cmif,
-      hasFullText: false, // transkription/erlaeuterung/incipit are empty across the whole DB
+      incipit,
+      erlaeuterung,
+      volltext, // first 1500 chars of the verbatim transcription
+      volltextLength: volltextFull.length || 0,
+      hasFullText: Boolean(volltextFull),
       text: textParts.join("\n"),
     });
   }

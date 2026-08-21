@@ -6,19 +6,24 @@ A standalone, local-only RAG chatbot over the ThBw correspondence archive
 changes to those directories; it only *reads* from the already-restored
 local MongoDB `letters` database.
 
-## Data reality check (see conversation for full detail)
+## Data reality check (verified against MongoDB 2026-08-21)
 
-- 36,556 letters (`briefs`), 24,028 people, 5,210 places, 20,662 subjects.
-- Only **19,428 letters (53%)** have a `regest` (scholarly abstract). The
-  rest are metadata-only (sender/recipient/date/place, no summary text).
-  `transkription`/`erlaeuterung`/`incipit` (full transcriptions) are empty
-  for every letter in the DB — there is no full letter text to retrieve.
+- 36,721 letters (`briefs`), 24,219 people, 5,247 places, 20,752 subjects.
+- **19,608 letters (53%)** have a `regest` (scholarly abstract); the rest
+  get a synthesised one-line metadata abstract (flagged `regestSynthetic`).
+- **Primary-source text exists and is used**: 2,215 letters carry a verbatim
+  `transkription.volltext`, 31k an `incipit`, 3.3k an editorial
+  `erlaeuterung`. (An earlier revision of this README claimed these fields
+  were empty — that was wrong.) They are carried on each corpus record and
+  shown to the model as evidence for top hits; they are deliberately NOT
+  mixed into the embedded text, where early-modern German/Latin would dilute
+  the modern-German regest signal.
 - Every letter has a stable citation URL (`https://thbw.hadw-bw.de/brief/{id}`)
   and a CMIF/TEI XML snippet with sourced person/place/date references —
   used here as the traceability mechanism.
-- Includes both `offen` (public, 22,552) and `intern` (internal, 14,004)
-  records, per your choice — reconsider this scope if this tool is ever
-  exposed outside the internal team.
+- Includes both `offen` (public, 22,812) and `intern` (internal, 13,909)
+  records in the corpus file; retrieval only ever serves `offen` — the eval
+  harness asserts this on every run.
 
 ## Architecture
 
@@ -75,15 +80,22 @@ npm start               # serves http://localhost:5055
 
 Then open http://localhost:5055 in a browser.
 
-### Resuming the embedding build
+### Embedding build
 
-`npm run build:index` was started once and deliberately stopped partway
-through (15,000/36,556 letters) to free up the machine overnight — it does
-**not** checkpoint, so re-running starts from 0. At the observed steady-state
-rate (~4.6 letters/sec) the full run takes roughly **2-2.5 hours** on this
-machine. Run it when you don't need the Mac for anything else demanding;
-`data/embeddings.bin` and `data/embeddings.meta.json` only appear once it
-finishes.
+`npm run build:index` is resumable (appends and derives progress from file
+size). ~2.5 h at 4.6 letters/s on an 8 GB M-series Air; ~30 min at ~20/s on
+an M1 Pro. Only needed when the corpus `text` field changes — metadata-only
+corpus rebuilds keep existing embeddings valid.
+
+## Evaluation
+
+`test/` contains the evaluation harness (see the question catalog in
+`Docs/`): gold sets derived from the editors' own tags,
+`npm run build:gold` + `npm run build:questions` after every mongorestore,
+then `npm run eval` (retrieval-only, seconds, free) or `npm run eval:full`
+(end-to-end incl. DeepSeek; writes `test/review-latest.md` for human
+grading). Hard assertions: no `intern` letter in any result, no invented
+citations. Metrics are compared against `test/baseline.json` on every run.
 
 ## Known limitations
 

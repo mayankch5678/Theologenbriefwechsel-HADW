@@ -92,7 +92,10 @@ async function main() {
     const docs = await briefs.find({ "schlagworte.sachen.v": s._id }, { projection }).toArray();
     const { offen, intern } = splitByVisibility(docs);
     questions.push({
-      id: `gen_sache_${offen[0] || String(s._id).slice(-6)}`,
+      // Keyed by the subject's own ObjectId tail: two subjects can share
+      // their first gold letter, and colliding ids silently overwrite each
+      // other in the results map.
+      id: `gen_sache_${String(s._id).slice(-6)}`,
       template: "sache",
       lang: "de",
       text: `Welche Briefe erwähnen ${label}?`,
@@ -122,14 +125,16 @@ async function main() {
     .toArray();
   const chosenPairs = sample(pairCounts, N_PAIRS, rand);
 
+  let pairSeq = 0;
   for (const p of chosenPairs) {
     const { s, r } = p._id;
+    pairSeq++;
     const docs = await briefs
       .find({ "verfasser.nameMitAmt.combi": s, "adressat.nameMitAmt.combi": r }, { projection })
       .toArray();
     const { offen, intern } = splitByVisibility(docs);
     questions.push({
-      id: `gen_person_${offen[0] || "x"}`,
+      id: `gen_person_${String(pairSeq).padStart(2, "0")}_${offen[0] || "x"}`,
       template: "person",
       lang: "de",
       text: `Welche Briefe schrieb ${s} an ${r}?`,

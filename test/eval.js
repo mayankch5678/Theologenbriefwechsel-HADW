@@ -107,6 +107,7 @@ const QUESTIONS = [
     id: "de_adv_nonexistent",
     lang: "de",
     text: "Fasse den Brief 99999 zusammen.",
+    expectEmpty: true, // explicit-lookup short-circuit: no such letter -> no sources
     expectRefusal: true,
     exemptCitations: ["99999"],
   },
@@ -214,10 +215,18 @@ async function evaluateQuestion(q, fixtures, hardFailures) {
     row.langAligned = row.answerLang === q.lang;
     const cited = [...new Set([...data.answer.matchAll(/Brief\s+(\d{3,6})/g)].map((m) => m[1]))];
     const exempt = new Set(q.exemptCitations || []);
-    const invented = cited.filter((id) => !ids.includes(id) && !exempt.has(id));
+    const unsourced = cited.filter((id) => !ids.includes(id) && !exempt.has(id));
+    // Regests and CMIF snippets themselves reference other letters; a model
+    // echoing such an id from the delivered material is sloppy citation, not
+    // fabrication. Only ids that appear nowhere in the source payload count
+    // as invented and fail hard.
+    const sourceBlob = JSON.stringify(data.sources);
+    const echoed = unsourced.filter((id) => sourceBlob.includes(id));
+    const invented = unsourced.filter((id) => !sourceBlob.includes(id));
     row.citedCount = cited.length;
+    if (echoed.length) row.echoedCitations = echoed;
     if (invented.length) {
-      hardFailures.push(`${q.id}: answer cites Brief ${invented.join(", ")} not present in sources`);
+      hardFailures.push(`${q.id}: answer cites Brief ${invented.join(", ")} — id appears nowhere in the sources`);
     }
     if (q.expectEmpty || q.expectRefusal) row.refused = looksLikeRefusal(data.answer);
     // Kept for the review sheet, never for scoring.
@@ -296,6 +305,7 @@ async function main() {
     if (FULL && r.langAligned !== undefined)
       parts.push(r.langAligned ? `lang ✓` : `LANG ${r.lang}->${r.answerLang}`);
     if (FULL && r.refused !== undefined) parts.push(r.refused ? "refused ✓" : "DID NOT REFUSE");
+    if (FULL && r.echoedCitations) parts.push(`⚠ echoed refs: ${r.echoedCitations.join(",")}`);
     console.log(`  ${r.id.padEnd(28)} ${parts.join("  ")}`);
   }
 

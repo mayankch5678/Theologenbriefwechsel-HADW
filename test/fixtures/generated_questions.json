@@ -1,1032 +1,1149 @@
 {
-  "generatedAt": "2026-08-21T12:48:04.751Z",
+  "generatedAt": "2026-08-21T13:08:39.204Z",
   "seed": 20260821,
   "questions": [
     {
-      "id": "gen_sache_16822",
+      "id": "gen_sache_680cda",
       "template": "sache",
       "lang": "de",
-      "text": "Welche Briefe erwähnen Apg 3,21?",
-      "subject": "Apg 3,21",
+      "text": "Welche Briefe erwähnen Kleiderordnung?",
+      "subject": "Kleiderordnung",
       "offen": [
-        "16822",
-        "19995",
-        "20045",
-        "20272",
-        "79187"
+        "16899",
+        "66331",
+        "73939",
+        "87416"
       ],
       "intern": []
     },
     {
-      "id": "gen_sache_11963",
+      "id": "gen_sache_705496",
       "template": "sache",
       "lang": "de",
-      "text": "Welche Briefe erwähnen Richter?",
-      "subject": "Richter",
+      "text": "Welche Briefe erwähnen Erwerb griechischer Bücher?",
+      "subject": "Erwerb griechischer Bücher",
       "offen": [
-        "11963",
-        "12231",
-        "12881",
-        "15971",
-        "18550",
-        "20359",
-        "21371",
-        "21842",
-        "23568",
-        "24619",
-        "24830",
-        "26203",
-        "30591",
-        "30634",
-        "36684",
-        "41659",
-        "60033",
-        "70454",
-        "74746",
-        "77082",
-        "78331",
-        "91509"
-      ],
-      "intern": [
-        "27572",
-        "46202"
-      ]
-    },
-    {
-      "id": "gen_sache_22949",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Kontroverse Johannes Sturm - Andreae?",
-      "subject": "Kontroverse Johannes Sturm - Andreae",
-      "offen": [
-        "22949",
-        "23092",
-        "23100",
-        "23107"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_10583",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Amtsenthebung von Johannes Sturm (1581)?",
-      "subject": "Amtsenthebung von Johannes Sturm (1581)",
-      "offen": [
-        "10583",
-        "22911",
-        "23022",
-        "23100",
-        "23128",
-        "23169",
-        "23173",
-        "23303",
-        "23469",
-        "23534",
-        "33665",
-        "48947",
-        "87581"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_11144",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Ausleihe von Büchern?",
-      "subject": "Ausleihe von Büchern",
-      "offen": [
-        "11144",
-        "11156",
-        "11253",
-        "15078",
-        "15314",
-        "15447",
-        "15461",
-        "15551",
-        "15743",
-        "15801",
-        "16232",
-        "16349",
-        "16387",
-        "16420",
-        "16475",
-        "16619",
-        "16702",
-        "16891",
-        "17189",
-        "17488",
-        "18601",
-        "18747",
-        "18772",
-        "18851",
-        "19577",
-        "19726",
-        "20814",
-        "21030",
-        "21167",
-        "24833",
-        "26322",
-        "27874",
-        "27904",
-        "28194",
-        "28195",
-        "28330",
-        "30286",
-        "31192",
-        "37345",
-        "42259",
-        "46048",
-        "64156",
-        "92714"
-      ],
-      "intern": [
-        "64906"
-      ]
-    },
-    {
-      "id": "gen_sache_29004",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Glockenturm?",
-      "subject": "Glockenturm",
-      "offen": [
-        "29004",
-        "35775",
-        "79662"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_13769",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Tartaren?",
-      "subject": "Tartaren",
-      "offen": [
-        "13769",
-        "15496",
-        "18021",
-        "21781",
-        "21812",
-        "22411",
-        "24697",
-        "29313",
-        "37252",
-        "40812",
-        "57450"
-      ],
-      "intern": [
-        "62702"
-      ]
-    },
-    {
-      "id": "gen_sache_22913",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Württembergische Landesordnung (1567)?",
-      "subject": "Württembergische Landesordnung (1567)",
-      "offen": [
-        "22913",
-        "28359",
-        "28521",
-        "51102"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_10467",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Empfangsbestätigung eines Briefes?",
-      "subject": "Empfangsbestätigung eines Briefes",
-      "offen": [
-        "10467",
-        "13502",
-        "14063",
-        "14180",
-        "14351",
-        "19147",
-        "19158",
-        "20611",
-        "26303",
-        "28648",
-        "29023",
-        "34421",
-        "35734",
-        "43010",
-        "44379",
-        "44392",
-        "49299",
-        "58638",
-        "63938",
-        "64996",
-        "65781",
-        "84027",
-        "86656",
-        "91570",
-        "95438"
-      ],
-      "intern": [
-        "23954",
-        "30875"
-      ]
-    },
-    {
-      "id": "gen_sache_17949",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Päpstliche Truppen?",
-      "subject": "Päpstliche Truppen",
-      "offen": [
-        "17949",
-        "18240",
-        "19385",
-        "39764"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_10605",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Lehre der Straßburger Kirche?",
-      "subject": "Lehre der Straßburger Kirche",
-      "offen": [
-        "10605",
-        "15753",
-        "16663",
-        "16812",
-        "17290",
-        "20719",
-        "23133",
-        "38864",
-        "48721",
-        "58839",
-        "79237"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_18254",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Todessehnsucht?",
-      "subject": "Todessehnsucht",
-      "offen": [
-        "18254",
-        "21543",
-        "24508",
-        "25093",
-        "25147",
-        "25838",
-        "26022",
-        "27457",
-        "31265",
-        "35588",
-        "70496"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_18682",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Lk 21,28?",
-      "subject": "Lk 21,28",
-      "offen": [
-        "18682",
-        "28159",
-        "57659"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_10310",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Promotion des Stephan Sylvius (1558/59)?",
-      "subject": "Promotion des Stephan Sylvius (1558/59)",
-      "offen": [
-        "10310",
-        "17601",
-        "17698",
-        "21923"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_10228",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Bergisches Buch (1577)?",
-      "subject": "Bergisches Buch (1577)",
-      "offen": [
-        "10228",
-        "10524",
-        "11935",
-        "21785",
-        "21793",
-        "21831",
-        "21898",
-        "22064",
-        "22132",
-        "22152",
-        "22817",
-        "22854",
-        "23243",
-        "23939",
-        "33066",
-        "35962",
-        "39633",
-        "40837",
-        "44534",
-        "44574",
-        "47995",
-        "49733",
-        "60143",
-        "62668",
-        "63942",
-        "64489",
-        "66453",
-        "68898",
-        "70559",
-        "70811",
-        "71236",
-        "74103",
-        "74639",
-        "77855",
-        "80140",
-        "82939",
-        "84567",
-        "85644",
-        "85907",
-        "94423",
-        "96236",
-        "96531",
-        "97260"
-      ],
-      "intern": [
-        "30673",
-        "31207",
-        "31263"
-      ]
-    },
-    {
-      "id": "gen_sache_14714",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Wahl des Studienorts?",
-      "subject": "Wahl des Studienorts",
-      "offen": [
-        "14714",
-        "16685",
-        "17422",
-        "18933",
-        "21117"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_14613",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Schlacht bei Mühlberg (24. April 1547)?",
-      "subject": "Schlacht bei Mühlberg (24. April 1547)",
-      "offen": [
-        "14613",
-        "14614",
-        "14620"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_13624",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Kirchen in den Niederlanden?",
-      "subject": "Kirchen in den Niederlanden",
-      "offen": [
-        "13624",
-        "26333",
-        "32887",
-        "46900",
-        "93908"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_16865",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Vogel, Dialogus von der Rechtfertigung, 1557 (VD16 V 2085)?",
-      "subject": "Vogel, Dialogus von der Rechtfertigung, 1557 (VD16 V 2085)",
-      "offen": [
-        "16865",
-        "16956",
-        "17213",
-        "17669",
-        "30578",
-        "32310",
-        "38893",
-        "55009"
-      ],
-      "intern": [
-        "45032"
-      ]
-    },
-    {
-      "id": "gen_sache_11311",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Beiliegender Zettel?",
-      "subject": "Beiliegender Zettel",
-      "offen": [
-        "11311",
-        "12231",
-        "12553",
-        "12622",
-        "13855",
-        "13905",
-        "14253",
-        "16683",
-        "21543",
-        "25955",
-        "30458",
-        "39558",
-        "56404"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_18741",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Wohnungssuche?",
-      "subject": "Wohnungssuche",
-      "offen": [
-        "18741",
-        "18742",
-        "18745",
-        "19727",
-        "19781",
-        "28490",
-        "53843",
-        "71093"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_21543",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Milderung?",
-      "subject": "Milderung",
-      "offen": [
-        "21543",
-        "21639",
-        "70712"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_11287",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Sommer?",
-      "subject": "Sommer",
-      "offen": [
-        "11287",
-        "13502",
-        "13642",
-        "15496",
-        "15767",
-        "16042",
-        "16995",
-        "18398",
-        "19494",
-        "19935",
-        "20877",
-        "21511",
-        "22554",
-        "36600",
-        "36922",
-        "37468",
-        "40237",
-        "45100",
-        "47907",
-        "65385",
-        "70129",
-        "84157",
-        "87730",
-        "90894",
-        "94780"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_28432",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Zanchi, Vorlesung De fine saeculi?",
-      "subject": "Zanchi, Vorlesung De fine saeculi",
-      "offen": [
-        "28432",
-        "70454",
-        "82971"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_11287",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Jesuiten in Bayern?",
-      "subject": "Jesuiten in Bayern",
-      "offen": [
-        "11287",
-        "71835",
-        "99523"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_10173",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Collegium Praedicatorum in Straßburg?",
-      "subject": "Collegium Praedicatorum in Straßburg",
-      "offen": [
-        "10173",
-        "15326",
-        "16282",
-        "16410",
-        "16872",
-        "17044",
-        "17577",
-        "17742",
-        "20443",
-        "22152",
-        "47143",
-        "96393"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_15793",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Röm 14,8?",
-      "subject": "Röm 14,8",
-      "offen": [
-        "15793",
-        "15822",
-        "17836",
-        "18244",
-        "18407",
-        "19390",
-        "19655",
-        "24491",
-        "25093",
-        "71339",
-        "85256"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_13835",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Auszug aus einem Schreiben?",
-      "subject": "Auszug aus einem Schreiben",
-      "offen": [
-        "13835",
-        "22433",
-        "37715",
-        "43052",
-        "57230",
-        "85848",
-        "86067"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_14151",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Statuten des Thomasstifts?",
-      "subject": "Statuten des Thomasstifts",
-      "offen": [
-        "14151",
-        "19735",
-        "19830"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_19752",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Pfalz-Zweibrücker Kirchenordnung (1570)?",
-      "subject": "Pfalz-Zweibrücker Kirchenordnung (1570)",
-      "offen": [
-        "19752",
-        "19771",
-        "62720"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_15899",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Keuschheit?",
-      "subject": "Keuschheit",
-      "offen": [
-        "15899",
-        "17906",
-        "18077",
-        "20765",
-        "54611",
-        "54882",
-        "58849",
-        "74631",
-        "77133",
-        "81515",
-        "98037"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_21309",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Tod Heinrich Bullingers (17. September 1575)?",
-      "subject": "Tod Heinrich Bullingers (17. September 1575)",
-      "offen": [
-        "21309",
-        "21430",
-        "37252",
-        "80811"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_15992",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Juristische Fakultät der Universität Heidelberg?",
-      "subject": "Juristische Fakultät der Universität Heidelberg",
-      "offen": [
-        "15992",
-        "16117",
-        "16774",
-        "21877",
-        "21965",
-        "23787",
-        "23911",
-        "38022",
-        "40485",
-        "40490",
-        "40918",
-        "51636"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_sache_10442",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Zwietracht?",
-      "subject": "Zwietracht",
-      "offen": [
-        "10442",
-        "10467",
-        "11170",
-        "11303",
-        "12504",
-        "13631",
-        "15541",
-        "18864",
-        "19080",
-        "21639",
-        "21743",
-        "23419",
-        "23828",
-        "25415",
-        "25571",
-        "30141",
-        "31696",
-        "34710",
-        "37385",
-        "40169",
-        "40409",
-        "41967",
-        "50803",
-        "64807",
-        "65093",
-        "67903",
-        "68100",
-        "83208",
-        "87856",
-        "89519",
-        "90252",
-        "97614"
-      ],
-      "intern": [
-        "17762",
-        "20825"
-      ]
-    },
-    {
-      "id": "gen_sache_13016",
-      "template": "sache",
-      "lang": "de",
-      "text": "Welche Briefe erwähnen Tit 1,15?",
-      "subject": "Tit 1,15",
-      "offen": [
-        "13016",
-        "15225",
-        "19314",
-        "47748",
-        "74631",
-        "77942"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_person_23823",
-      "template": "person",
-      "lang": "de",
-      "text": "Welche Briefe schrieb Timotheus Kirchner an [Philipp Marbach]?",
-      "sender": "Timotheus Kirchner",
-      "recipient": "[Philipp Marbach]",
-      "offen": [
-        "23823",
-        "24123",
-        "24226"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_person_20809",
-      "template": "person",
-      "lang": "de",
-      "text": "Welche Briefe schrieb Philipp Marbach an Maximilian von Kuenburg?",
-      "sender": "Philipp Marbach",
-      "recipient": "Maximilian von Kuenburg",
-      "offen": [
-        "20809",
-        "21100",
-        "21177",
-        "21276",
-        "21536",
-        "67824"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_person_20994",
-      "template": "person",
-      "lang": "de",
-      "text": "Welche Briefe schrieb Stephan Gerlach an Martin Crusius?",
-      "sender": "Stephan Gerlach",
-      "recipient": "Martin Crusius",
-      "offen": [
-        "20994",
-        "21506",
-        "21589",
         "21654",
-        "21700",
-        "21813",
-        "22180",
-        "25525"
-      ],
-      "intern": [
-        "21542",
-        "22105"
-      ]
-    },
-    {
-      "id": "gen_person_34789",
-      "template": "person",
-      "lang": "de",
-      "text": "Welche Briefe schrieb [Johann Ulrich Pregitzer], Rektor an Johann Friedrich, Herzog von Württemberg?",
-      "sender": "[Johann Ulrich Pregitzer], Rektor",
-      "recipient": "Johann Friedrich, Herzog von Württemberg",
-      "offen": [
-        "34789",
-        "43128",
-        "60446",
-        "61933",
-        "68111",
-        "70826",
-        "89438"
-      ],
-      "intern": [
-        "89765"
-      ]
-    },
-    {
-      "id": "gen_person_11115",
-      "template": "person",
-      "lang": "de",
-      "text": "Welche Briefe schrieb Johannes Marbach an Wilhelm Bidembach?",
-      "sender": "Johannes Marbach",
-      "recipient": "Wilhelm Bidembach",
-      "offen": [
-        "11115",
-        "40666",
-        "49179",
-        "49847",
-        "52661",
-        "56182",
-        "97512"
+        "21878",
+        "80132"
       ],
       "intern": []
     },
     {
-      "id": "gen_person_23635",
-      "template": "person",
+      "id": "gen_sache_11f0f5",
+      "template": "sache",
       "lang": "de",
-      "text": "Welche Briefe schrieb Ludwig, Herzog von Württemberg an [Konrad, Graf von Tübingen und Herr zu Lichteneck], Rektor?",
-      "sender": "Ludwig, Herzog von Württemberg",
-      "recipient": "[Konrad, Graf von Tübingen und Herr zu Lichteneck], Rektor",
+      "text": "Welche Briefe erwähnen Gregorianischer Kalender?",
+      "subject": "Gregorianischer Kalender",
       "offen": [
-        "23635",
-        "57754",
-        "71797",
-        "72837",
-        "74396"
+        "23396",
+        "23556",
+        "23568",
+        "23582",
+        "23585",
+        "23591",
+        "23597",
+        "23621",
+        "23622",
+        "23655",
+        "23709",
+        "23795",
+        "23800",
+        "23828",
+        "23840",
+        "23963",
+        "24697",
+        "25483",
+        "25510",
+        "25599",
+        "25612",
+        "25734",
+        "26915",
+        "31229",
+        "33121",
+        "36016",
+        "36915",
+        "42697",
+        "44737",
+        "47580",
+        "49338",
+        "50249",
+        "53527",
+        "60774",
+        "61481",
+        "61563",
+        "63408",
+        "65903",
+        "68545",
+        "69098",
+        "77942",
+        "79872",
+        "82875",
+        "83417",
+        "84605",
+        "89517",
+        "90708",
+        "94132",
+        "97616"
+      ],
+      "intern": [
+        "73786",
+        "90196"
+      ]
+    },
+    {
+      "id": "gen_sache_704d83",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen 2. Buch der Könige?",
+      "subject": "2. Buch der Könige",
+      "offen": [
+        "17853",
+        "18452",
+        "18864",
+        "21371",
+        "21614",
+        "32360",
+        "46794",
+        "55866",
+        "68137",
+        "79058",
+        "89492",
+        "90883",
+        "96312"
       ],
       "intern": []
     },
     {
-      "id": "gen_person_34685",
-      "template": "person",
+      "id": "gen_sache_704dcc",
+      "template": "sache",
       "lang": "de",
-      "text": "Welche Briefe schrieb Jakob Heerbrand an Leser?",
-      "sender": "Jakob Heerbrand",
-      "recipient": "Leser",
+      "text": "Welche Briefe erwähnen Abendmahlselemente als Zeichen?",
+      "subject": "Abendmahlselemente als Zeichen",
       "offen": [
-        "34685",
-        "39400",
-        "65396",
-        "68262",
-        "71267",
-        "73279",
-        "80774",
-        "88968"
+        "10423",
+        "11522",
+        "12372",
+        "16569",
+        "17815",
+        "17884",
+        "18371",
+        "19307",
+        "19510",
+        "20866",
+        "22932",
+        "23763",
+        "30983",
+        "45627",
+        "45859",
+        "54269",
+        "62509",
+        "77325",
+        "97789"
       ],
       "intern": [
-        "24169",
-        "35247",
-        "37107",
-        "47889",
-        "63173",
-        "78894",
-        "79729",
-        "87387",
-        "87676"
+        "49806"
       ]
     },
     {
-      "id": "gen_person_26938",
-      "template": "person",
+      "id": "gen_sache_7062a7",
+      "template": "sache",
       "lang": "de",
-      "text": "Welche Briefe schrieb Alexander Blessing, Abt zu Blaubeuren an Ludwig, Herzog von Württemberg?",
-      "sender": "Alexander Blessing, Abt zu Blaubeuren",
-      "recipient": "Ludwig, Herzog von Württemberg",
+      "text": "Welche Briefe erwähnen Protokoll?",
+      "subject": "Protokoll",
       "offen": [
-        "26938",
-        "35706",
-        "46435",
-        "98556"
+        "14498",
+        "16726",
+        "17006",
+        "18730",
+        "21166",
+        "21295",
+        "21298",
+        "23915",
+        "24440",
+        "24456",
+        "24551",
+        "24702",
+        "25656",
+        "30600",
+        "30942",
+        "35571",
+        "43031",
+        "45701",
+        "47660",
+        "48520",
+        "56835",
+        "59626",
+        "61375",
+        "66974",
+        "68084",
+        "69570",
+        "71872",
+        "72906",
+        "79545",
+        "86458",
+        "91023",
+        "98243"
       ],
       "intern": [
-        "58212"
+        "83587"
       ]
     },
     {
-      "id": "gen_person_26243",
+      "id": "gen_sache_704d8d",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen 2. Konzil von Konstantinopel (553)?",
+      "subject": "2. Konzil von Konstantinopel (553)",
+      "offen": [
+        "18096",
+        "21229",
+        "21262"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_c8dfea",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Tossanus, De senectute, 1599 (VD16 T 1732)?",
+      "subject": "Tossanus, De senectute, 1599 (VD16 T 1732)",
+      "offen": [
+        "26115",
+        "26152",
+        "26194",
+        "26221",
+        "26240",
+        "26262",
+        "26290",
+        "26304",
+        "26305",
+        "26331",
+        "26388",
+        "49917"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_2c542e",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Vermigli, Defensio ad Riccardi Smythaei, 1559 (VD16 V 830)?",
+      "subject": "Vermigli, Defensio ad Riccardi Smythaei, 1559 (VD16 V 830)",
+      "offen": [
+        "10317",
+        "15583",
+        "16285",
+        "17402",
+        "17408",
+        "17545",
+        "17547",
+        "17566",
+        "17706",
+        "17746"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_434f1d",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen unio personalis?",
+      "subject": "unio personalis",
+      "offen": [
+        "11172",
+        "19238",
+        "20750",
+        "20866",
+        "21737",
+        "22007",
+        "22057",
+        "23170",
+        "25424",
+        "27288",
+        "30141",
+        "39092",
+        "40818",
+        "43219",
+        "43326",
+        "59250",
+        "97260",
+        "99721"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_1d3ac3",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Erastus, Theses de Morbis Totius Substantiae, 1575?",
+      "subject": "Erastus, Theses de Morbis Totius Substantiae, 1575",
+      "offen": [
+        "21124",
+        "21677",
+        "21850",
+        "21909"
+      ],
+      "intern": [
+        "27887"
+      ]
+    },
+    {
+      "id": "gen_sache_68427f",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Advokat?",
+      "subject": "Advokat",
+      "offen": [
+        "25680",
+        "27551",
+        "28907",
+        "53589",
+        "54310",
+        "74756"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_89066c",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Falsche Apostel?",
+      "subject": "Falsche Apostel",
+      "offen": [
+        "17969",
+        "33960",
+        "77325"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_37fa9d",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Schiffsmetapher?",
+      "subject": "Schiffsmetapher",
+      "offen": [
+        "14380",
+        "40558",
+        "41777",
+        "48662",
+        "49720",
+        "68100"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_5b76af",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Sorglosigkeit der Boten?",
+      "subject": "Sorglosigkeit der Boten",
+      "offen": [
+        "11191",
+        "15740",
+        "17782",
+        "19350",
+        "21088",
+        "28418",
+        "50448",
+        "59487",
+        "65347",
+        "80994"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_b5dda9",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Lebensunterhalt?",
+      "subject": "Lebensunterhalt",
+      "offen": [
+        "10308",
+        "10369",
+        "11540",
+        "11950",
+        "12661",
+        "12941",
+        "13854",
+        "14131",
+        "16554",
+        "16811",
+        "20013",
+        "20456",
+        "21140",
+        "21304",
+        "22368",
+        "22370",
+        "22507",
+        "22844",
+        "23787",
+        "23808",
+        "25201",
+        "25885",
+        "26370",
+        "27923",
+        "29058",
+        "32108",
+        "33091",
+        "33127",
+        "35921",
+        "37314",
+        "40683",
+        "42225",
+        "42378",
+        "42379",
+        "43650",
+        "44469",
+        "47953",
+        "48754",
+        "52789",
+        "54271",
+        "64098",
+        "71372",
+        "74254",
+        "81672",
+        "83827",
+        "84938",
+        "85718",
+        "89835",
+        "91449",
+        "93500",
+        "95022",
+        "96052"
+      ],
+      "intern": [
+        "30972",
+        "42189"
+      ]
+    },
+    {
+      "id": "gen_sache_704fe8",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Ausfuhrverbot?",
+      "subject": "Ausfuhrverbot",
+      "offen": [
+        "14953",
+        "15189",
+        "15195"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_fd2fad",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Belagerung von Bonn (1583/84)?",
+      "subject": "Belagerung von Bonn (1583/84)",
+      "offen": [
+        "23452",
+        "23604",
+        "23623",
+        "37699"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_2e6fc0",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Ps 68,6?",
+      "subject": "Ps 68,6",
+      "offen": [
+        "23669",
+        "28039",
+        "94271"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_03a85b",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Homer, Odyssee?",
+      "subject": "Homer, Odyssee",
+      "offen": [
+        "21915",
+        "79058",
+        "82821",
+        "83626",
+        "89492"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_dc5543",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Vermögensverlust?",
+      "subject": "Vermögensverlust",
+      "offen": [
+        "10641",
+        "13146",
+        "19411",
+        "20635",
+        "24659",
+        "30312",
+        "31425",
+        "56458",
+        "62896",
+        "74032",
+        "76954",
+        "98078"
+      ],
+      "intern": [
+        "13008"
+      ]
+    },
+    {
+      "id": "gen_sache_7057e8",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Gründonnerstag?",
+      "subject": "Gründonnerstag",
+      "offen": [
+        "21262",
+        "21812",
+        "39292"
+      ],
+      "intern": [
+        "81172"
+      ]
+    },
+    {
+      "id": "gen_sache_d17404",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Bündnis Frankreichs mit der Eidgenossenschaft?",
+      "subject": "Bündnis Frankreichs mit der Eidgenossenschaft",
+      "offen": [
+        "14603",
+        "15067",
+        "17928",
+        "18747",
+        "18864",
+        "18980",
+        "18988",
+        "40331",
+        "45145",
+        "62509",
+        "85337"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_654acf",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Unschuldsbeteuerung?",
+      "subject": "Unschuldsbeteuerung",
+      "offen": [
+        "26203",
+        "34107",
+        "37314",
+        "39720"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_c8df24",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen 1 Kor 4,2?",
+      "subject": "1 Kor 4,2",
+      "offen": [
+        "10294",
+        "14333",
+        "22906",
+        "77296",
+        "86655",
+        "89262"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_11596b",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Unterrichtsplan?",
+      "subject": "Unterrichtsplan",
+      "offen": [
+        "10553",
+        "12859",
+        "13841",
+        "16845",
+        "19965",
+        "61336"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_705f12",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Mission?",
+      "subject": "Mission",
+      "offen": [
+        "19385",
+        "21505",
+        "23505",
+        "40788",
+        "80758",
+        "98698"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_f80030",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Geburt eines Kindes?",
+      "subject": "Geburt eines Kindes",
+      "offen": [
+        "10370",
+        "12857",
+        "16100",
+        "19163",
+        "19935",
+        "27498",
+        "33579",
+        "90314"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_604e29",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Straßburger Kapitelstreit (1583-1604)?",
+      "subject": "Straßburger Kapitelstreit (1583-1604)",
+      "offen": [
+        "10661",
+        "10761",
+        "16980",
+        "24467",
+        "24945",
+        "25248",
+        "25292",
+        "25339",
+        "25374",
+        "25422",
+        "26039",
+        "26709"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_705d91",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Lk 23,34?",
+      "subject": "Lk 23,34",
+      "offen": [
+        "10356",
+        "17823",
+        "80104"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_70572e",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Getreide?",
+      "subject": "Getreide",
+      "offen": [
+        "12493",
+        "13745",
+        "15502",
+        "15872",
+        "16491",
+        "16957",
+        "18489",
+        "18528",
+        "18545",
+        "20208",
+        "21019",
+        "21290",
+        "21315",
+        "21804",
+        "21893",
+        "22000",
+        "23367",
+        "24697",
+        "25183",
+        "25268",
+        "25615",
+        "25797",
+        "30267",
+        "30727",
+        "33343",
+        "33686",
+        "36537",
+        "40918",
+        "44902",
+        "48532",
+        "55114",
+        "56636",
+        "62231",
+        "69225",
+        "75253",
+        "75641",
+        "78013",
+        "78510",
+        "78955",
+        "88903"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_750798",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Regalien?",
+      "subject": "Regalien",
+      "offen": [
+        "40315",
+        "79069",
+        "81005"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_f57967",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Filialkirche?",
+      "subject": "Filialkirche",
+      "offen": [
+        "35914",
+        "52437",
+        "69299",
+        "79955",
+        "81005",
+        "87755",
+        "99482"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_6da3ba",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Geburtskomplikationen?",
+      "subject": "Geburtskomplikationen",
+      "offen": [
+        "16572",
+        "18177",
+        "22835"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_sache_0e4360",
+      "template": "sache",
+      "lang": "de",
+      "text": "Welche Briefe erwähnen Streit um Worte?",
+      "subject": "Streit um Worte",
+      "offen": [
+        "10367",
+        "12150",
+        "15541",
+        "15694",
+        "15764",
+        "15931",
+        "16462",
+        "16707",
+        "17815",
+        "20021",
+        "20183",
+        "27906",
+        "38589",
+        "40070",
+        "48370",
+        "51790",
+        "52577",
+        "57791",
+        "70612",
+        "77325",
+        "83208",
+        "89772",
+        "95729"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_01_10189",
       "template": "person",
       "lang": "de",
-      "text": "Welche Briefe schrieb Karl der Jüngere von Zierotin an Johann Jakob Grynaeus?",
-      "sender": "Karl der Jüngere von Zierotin",
+      "text": "Welche Briefe schrieb Nikolaus Thomae an Konrad Hubert?",
+      "sender": "Nikolaus Thomae",
+      "recipient": "Konrad Hubert",
+      "offen": [
+        "10189",
+        "11660",
+        "11665",
+        "11707",
+        "11731",
+        "11755",
+        "11802",
+        "13133",
+        "13630",
+        "13949"
+      ],
+      "intern": [
+        "10190",
+        "10191",
+        "11587",
+        "11611",
+        "11708",
+        "11722",
+        "11925",
+        "12064",
+        "13224",
+        "14361"
+      ]
+    },
+    {
+      "id": "gen_person_02_15318",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Württembergische Theologen an Christoph, Herzog von Württemberg?",
+      "sender": "Württembergische Theologen",
+      "recipient": "Christoph, Herzog von Württemberg",
+      "offen": [
+        "15318",
+        "17308",
+        "17321",
+        "18575",
+        "18632",
+        "18962",
+        "19199",
+        "19233",
+        "19263",
+        "28521",
+        "43015",
+        "43176",
+        "48223",
+        "84295"
+      ],
+      "intern": [
+        "15538",
+        "28581",
+        "30788",
+        "34055",
+        "56038",
+        "78992",
+        "81929",
+        "84207"
+      ]
+    },
+    {
+      "id": "gen_person_03_38173",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Ludwig Friedrich, Herzog von Württemberg-Mömpelgard an [Konrad Cellarius], Rektor?",
+      "sender": "Ludwig Friedrich, Herzog von Württemberg-Mömpelgard",
+      "recipient": "[Konrad Cellarius], Rektor",
+      "offen": [
+        "38173",
+        "56538",
+        "98064"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_04_10196",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Hartmann Beyer an Johannes Brenz (d. Ä.)?",
+      "sender": "Hartmann Beyer",
+      "recipient": "Johannes Brenz (d. Ä.)",
+      "offen": [
+        "10196",
+        "80851",
+        "80854",
+        "80855",
+        "80856",
+        "80857",
+        "80858"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_05_26175",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Lukas Osiander d. Ä. an Bürgermeister und Rat der Stadt Esslingen?",
+      "sender": "Lukas Osiander d. Ä.",
+      "recipient": "Bürgermeister und Rat der Stadt Esslingen",
+      "offen": [
+        "26175",
+        "26269",
+        "44707",
+        "49702",
+        "54405",
+        "61620",
+        "72989",
+        "87247",
+        "94579"
+      ],
+      "intern": [
+        "28355"
+      ]
+    },
+    {
+      "id": "gen_person_06_21533",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb August, Kurfürst von Sachsen an Jakob Andreae?",
+      "sender": "August, Kurfürst von Sachsen",
+      "recipient": "Jakob Andreae",
+      "offen": [
+        "21533",
+        "21548",
+        "21583",
+        "21637",
+        "21753",
+        "21757",
+        "22135",
+        "22568",
+        "22791",
+        "29857",
+        "33066",
+        "38696",
+        "39633",
+        "44152",
+        "44540",
+        "45854",
+        "46182",
+        "46245",
+        "50614",
+        "51412",
+        "52679",
+        "53614",
+        "56063",
+        "56918",
+        "59647",
+        "61178",
+        "62668",
+        "62758",
+        "65846",
+        "66453",
+        "66777",
+        "74103",
+        "75403",
+        "82364",
+        "83218",
+        "85122",
+        "90631",
+        "93758",
+        "96236",
+        "98265"
+      ],
+      "intern": [
+        "21385",
+        "21405",
+        "21409",
+        "22614",
+        "22659",
+        "22755",
+        "30752",
+        "39889",
+        "45156",
+        "47773",
+        "50620",
+        "64822",
+        "75028"
+      ]
+    },
+    {
+      "id": "gen_person_07_57350",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Johann Jakob Grynaeus an Burkhard Leemann?",
+      "sender": "Johann Jakob Grynaeus",
+      "recipient": "Burkhard Leemann",
+      "offen": [
+        "57350",
+        "81435",
+        "94925"
+      ],
+      "intern": [
+        "25198",
+        "25240",
+        "25506",
+        "28047",
+        "28059",
+        "30952",
+        "48052",
+        "57649",
+        "57673",
+        "65711",
+        "65861",
+        "69024",
+        "79113"
+      ]
+    },
+    {
+      "id": "gen_person_08_19706",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Tilemann Heshusius an Nikolaus Gallus, Superintendent?",
+      "sender": "Tilemann Heshusius",
+      "recipient": "Nikolaus Gallus, Superintendent",
+      "offen": [
+        "19706",
+        "30286",
+        "31063",
+        "31545"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_09_49434",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Victorinus Strigel an Wolf von Kötteritz?",
+      "sender": "Victorinus Strigel",
+      "recipient": "Wolf von Kötteritz",
+      "offen": [
+        "49434",
+        "82564",
+        "85121",
+        "88398"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_10_20094",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Jakob Andreae an Augsburger Pfarrer?",
+      "sender": "Jakob Andreae",
+      "recipient": "Augsburger Pfarrer",
+      "offen": [
+        "20094",
+        "30737",
+        "39468",
+        "64888",
+        "70831",
+        "78307",
+        "91067"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_11_11743",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Philipp Melanchthon an Erhard Schnepf?",
+      "sender": "Philipp Melanchthon",
+      "recipient": "Erhard Schnepf",
+      "offen": [
+        "11743",
+        "12923",
+        "14079",
+        "14767",
+        "14930",
+        "15064",
+        "15632",
+        "80722",
+        "80723",
+        "80724",
+        "80725",
+        "80726",
+        "80728",
+        "80729",
+        "80730",
+        "80731",
+        "80732",
+        "80733",
+        "80735",
+        "80736",
+        "80738",
+        "80739",
+        "80740"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_12_30564",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Johann Friedrich, Herzog von Württemberg an Matthias Hafenreffer, Superattendent?",
+      "sender": "Johann Friedrich, Herzog von Württemberg",
+      "recipient": "Matthias Hafenreffer, Superattendent",
+      "offen": [
+        "30564",
+        "32786",
+        "43372",
+        "78975"
+      ],
+      "intern": []
+    },
+    {
+      "id": "gen_person_13_37054",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Victorinus Strigel an Matthäus Wesenbeck?",
+      "sender": "Victorinus Strigel",
+      "recipient": "Matthäus Wesenbeck",
+      "offen": [
+        "37054",
+        "56731",
+        "58864",
+        "75002",
+        "85283",
+        "85495",
+        "90120",
+        "90883",
+        "99996"
+      ],
+      "intern": [
+        "11553",
+        "33867",
+        "46340",
+        "66049",
+        "66919",
+        "68634",
+        "72394",
+        "85067",
+        "93096",
+        "95966"
+      ]
+    },
+    {
+      "id": "gen_person_14_27900",
+      "template": "person",
+      "lang": "de",
+      "text": "Welche Briefe schrieb Nikolaus von Burghaus an Johann Jakob Grynaeus?",
+      "sender": "Nikolaus von Burghaus",
       "recipient": "Johann Jakob Grynaeus",
       "offen": [
-        "26243",
-        "26274",
-        "26432",
-        "26449"
+        "27900",
+        "65269",
+        "81935"
       ],
       "intern": []
     },
     {
-      "id": "gen_person_46108",
+      "id": "gen_person_15_40001",
       "template": "person",
       "lang": "de",
-      "text": "Welche Briefe schrieb Johannes Piscator an Johann VII., Graf von Nassau-Siegen?",
-      "sender": "Johannes Piscator",
-      "recipient": "Johann VII., Graf von Nassau-Siegen",
+      "text": "Welche Briefe schrieb Amandus Polanus von Polansdorf an David Pareus?",
+      "sender": "Amandus Polanus von Polansdorf",
+      "recipient": "David Pareus",
       "offen": [
-        "46108",
-        "50361",
-        "83042",
-        "90384"
+        "40001",
+        "40002",
+        "41400",
+        "41731",
+        "41812"
       ],
       "intern": []
-    },
-    {
-      "id": "gen_person_30394",
-      "template": "person",
-      "lang": "de",
-      "text": "Welche Briefe schrieb Christoph, Herzog von Württemberg an [Johannes Hochmann], Rektor der Universität Tübingen?",
-      "sender": "Christoph, Herzog von Württemberg",
-      "recipient": "[Johannes Hochmann], Rektor der Universität Tübingen",
-      "offen": [
-        "30394",
-        "31538",
-        "80068"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_person_21417",
-      "template": "person",
-      "lang": "de",
-      "text": "Welche Briefe schrieb Tilemann Heshusius an Johann von Hildesheim?",
-      "sender": "Tilemann Heshusius",
-      "recipient": "Johann von Hildesheim",
-      "offen": [
-        "21417",
-        "28153",
-        "28156",
-        "28158",
-        "28159",
-        "28160",
-        "30633",
-        "42854"
-      ],
-      "intern": [
-        "96487"
-      ]
-    },
-    {
-      "id": "gen_person_21635",
-      "template": "person",
-      "lang": "de",
-      "text": "Welche Briefe schrieb Jakob Präntel an [Johannes Pappus]?",
-      "sender": "Jakob Präntel",
-      "recipient": "[Johannes Pappus]",
-      "offen": [
-        "21635",
-        "22921",
-        "23045",
-        "23334",
-        "24318",
-        "24370",
-        "24469",
-        "24605",
-        "25410"
-      ],
-      "intern": [
-        "21836"
-      ]
-    },
-    {
-      "id": "gen_person_58782",
-      "template": "person",
-      "lang": "de",
-      "text": "Welche Briefe schrieb Jakob Magirus, Abt zu Lorch an Johann Friedrich, Herzog von Württemberg?",
-      "sender": "Jakob Magirus, Abt zu Lorch",
-      "recipient": "Johann Friedrich, Herzog von Württemberg",
-      "offen": [
-        "58782",
-        "60310",
-        "66418",
-        "75965",
-        "94341"
-      ],
-      "intern": []
-    },
-    {
-      "id": "gen_person_22547",
-      "template": "person",
-      "lang": "de",
-      "text": "Welche Briefe schrieb Matthias Ritter (d. J.) an Johannes Pappus?",
-      "sender": "Matthias Ritter (d. J.)",
-      "recipient": "Johannes Pappus",
-      "offen": [
-        "22547",
-        "22841",
-        "54259",
-        "99377"
-      ],
-      "intern": [
-        "23034",
-        "37024"
-      ]
     }
   ]
 }

@@ -29,6 +29,15 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const EMBED_MODEL = process.env.EMBED_MODEL || "bge-m3";
 const CHAT_MODEL = process.env.CHAT_MODEL || "deepseek-chat";
 const TOP_K = Number(process.env.TOP_K || 30); // embedding-only fallback path
+// When the keyword path already produced hits (curated tags / names / dates
+// answered the question), the embedding path is only a supplement — letting
+// it add its full top-30 anyway was the main residual precision drain
+// (~28 extras on a 4-letter gold set). With keyword hits present, only this
+// many embedding-only extras are considered.
+const EMBED_EXTRA_K = Number(process.env.EMBED_EXTRA_K || 10);
+// How many of the in-context letters get their transcription excerpt
+// included. Caps prompt growth: excerpts are up to 1,500 chars each.
+const VOLLTEXT_IN_CONTEXT = Number(process.env.VOLLTEXT_IN_CONTEXT || 8);
 // The keyword path returns every match, but the prompt can't: a broad subject
 // matches thousands of letters and would overflow the chat model's context.
 // Only what we send to DeepSeek is capped — the API response stays uncapped.
@@ -77,6 +86,12 @@ let subjectIndex = new Map();
 // Württemberg]", "Württembergische Theologen").
 let senderIndex = new Map();
 let recipientIndex = new Map();
+// Year (from dateIso) -> public record indices. "Welche Briefe stammen aus
+// dem Jahr 1563?" is a database filter, not a similarity search — top-K
+// retrieval structurally cannot enumerate 384 letters (§6.7).
+let yearIndex = new Map();
+// Letter id ("18494") -> public record index, for direct-lookup questions.
+let briefIdIndex = new Map();
 
 // Case- and punctuation-insensitive form used on both sides of the match.
 function normalize(s) {
@@ -154,6 +169,13 @@ async function loadIndex() {
     }
     for (const name of records[i].senders || []) addTo(senderIndex, name, i);
     for (const name of records[i].recipients || []) addTo(recipientIndex, name, i);
+    if (records[i].dateIso) {
+      const year = records[i].dateIso.slice(0, 4);
+      let bucket = yearIndex.get(year);
+      if (!bucket) yearIndex.set(year, (bucket = []));
+      bucket.push(i);
+    }
+    briefIdIndex.set(String(records[i].id), i);
   }
 
   const meta = JSON.parse(await readFile(path.join(DATA_DIR, "embeddings.meta.json"), "utf8"));
@@ -307,6 +329,40 @@ function matchPersons(query) {
   return { indices: [...indices], persons };
 }
 
+// Deterministic year filter. Only fires on explicitly date-shaped phrasing
+// ("aus dem Jahr 1563", "datiert 1563") — a bare year in a question usually
+// qualifies a subject or an edition, not a date filter.
+function matchYears(query) {
+  if (!/\bjahr\w*\b|\bdatiert\b/i.test(query)) return { indices: [], years: [] };
+  const years = [...new Set([...query.matchAll(/\b(1[4-6]\d\d)\b/g)].map((m) => m[1]))];
+  const indices = new Set();
+  const matched = [];
+  for (const y of years) {
+    const bucket = yearIndex.get(y);
+    if (!bucket) continue;
+    matched.push(y);
+    for (const i of bucket) indices.add(i);
+  }
+  return { indices: [...indices], years: matched };
+}
+
+// Direct letter lookup: "Fasse den Brief 18494 zusammen." names its target
+// exactly, so retrieval is a dictionary lookup, not a search. When the
+// question references letter ids and NONE resolve to a public letter, the
+// whole retrieval short-circuits to empty — answering a question about a
+// nonexistent letter with 30 similar-sounding ones invites the model to
+// pretend (the Brief-99999 failure).
+function matchBriefIds(query) {
+  const refs = [...query.matchAll(/\bbrief\w*\s+(?:nr\.?\s*)?(\d{3,6})\b/gi)].map((m) => m[1]);
+  if (!refs.length) return { indices: [], refs: [], unresolved: false };
+  const indices = [];
+  for (const id of refs) {
+    const i = briefIdIndex.get(id);
+    if (i !== undefined) indices.push(i);
+  }
+  return { indices, refs, unresolved: indices.length === 0 };
+}
+
 // Hybrid retrieval over public records only. There is no either/or: both
 // retrievers always run. Every letter carrying a matched keyword subject
 // (uncapped) is unioned with the embedding top-K, deduplicated by letter id,
@@ -317,12 +373,32 @@ function matchPersons(query) {
 // keyword-only path would let one of those replace a good embedding search
 // with a handful of unrelated letters.
 function retrieve(queryVec, message) {
+  const briefIds = matchBriefIds(message);
+  if (briefIds.unresolved) {
+    // The question asked for specific letters that don't (publicly) exist —
+    // nothing else can be the right answer.
+    return {
+      hits: [],
+      subjects: [],
+      droppedSubjects: [],
+      persons: [],
+      years: [],
+      briefIdRefs: briefIds.refs,
+      keywordMatches: 0,
+      belowFloor: 0,
+    };
+  }
+
   const { indices, subjects, droppedSubjects } = matchSubjects(message);
   const { indices: personIndices, persons } = matchPersons(message);
+  const { indices: yearIndices, years } = matchYears(message);
   const ranked = rankByCosine(queryVec, publicIndices);
 
-  const keyword = new Set([...indices, ...personIndices]);
-  const topK = new Set(ranked.slice(0, TOP_K).map((h) => h.index));
+  const keyword = new Set([...indices, ...personIndices, ...yearIndices, ...briefIds.indices]);
+  // With keyword evidence in hand the embedding path is a supplement, not
+  // the main course — cap how many embedding-only extras it may add.
+  const embedK = keyword.size ? EMBED_EXTRA_K : TOP_K;
+  const topK = new Set(ranked.slice(0, embedK).map((h) => h.index));
 
   // `ranked` is already sorted, so walking it preserves cosine order and keeps
   // the best-scoring copy of any letter that both retrievers returned.
@@ -342,7 +418,16 @@ function retrieve(queryVec, message) {
     hits.push(hit);
   }
 
-  return { hits, subjects, droppedSubjects, persons, keywordMatches: keyword.size, belowFloor };
+  return {
+    hits,
+    subjects,
+    droppedSubjects,
+    persons,
+    years,
+    briefIdRefs: briefIds.refs,
+    keywordMatches: keyword.size,
+    belowFloor,
+  };
 }
 
 function buildContext(hits) {
@@ -360,10 +445,23 @@ function buildContext(hits) {
       // The synthetic flag finally reaches the model: prompt rule 6 asks it
       // to mark auto-generated summaries, which it could never do while the
       // context hid which regests were synthesised (handoff §6.5).
-      const body = r.regestSynthetic
-        ? `${r.regest}\n(Automatisch aus Metadaten generierte Zusammenfassung — kein editorisches Regest vorhanden.)`
-        : r.regest;
-      return `[${n}] Brief ${r.id} (${r.url})\n${who}\n${body}`;
+      const parts = [`[${n}] Brief ${r.id} (${r.url})`, who];
+      if (r.incipit) parts.push(`Incipit: "${r.incipit}"`);
+      parts.push(
+        r.regestSynthetic
+          ? `${r.regest}\n(Automatisch aus Metadaten generierte Zusammenfassung — kein editorisches Regest vorhanden.)`
+          : r.regest
+      );
+      // Primary-source evidence for the top hits: the verbatim transcription
+      // excerpt (early-modern German/Latin). Limited to the first few letters
+      // so 60 excerpts can't blow up the prompt.
+      if (r.volltext && i < VOLLTEXT_IN_CONTEXT) {
+        parts.push(`Transkription (Auszug): ${r.volltext}`);
+      }
+      if (r.erlaeuterung && i < VOLLTEXT_IN_CONTEXT) {
+        parts.push(`Editorische Erläuterung: ${r.erlaeuterung}`);
+      }
+      return parts.filter(Boolean).join("\n");
     })
     .join("\n\n");
 }
@@ -372,7 +470,7 @@ const SYSTEM_PROMPT = `Du bist ein Assistent für das Briefarchiv der Theologenb
 
 STRIKTE REGELN:
 1. Antworte NUR auf Basis der unten bereitgestellten Briefe. Erfinde NICHTS.
-2. Jede Aussage MUSS mit einer Brief-ID belegt werden, z.B. [Brief 18495].
+2. Jede Aussage MUSS mit einer Brief-ID belegt werden, z.B. [Brief 18495]. Nenne AUSSCHLIESSLICH Brief-IDs, die in den Quellenausschnitten vorkommen — erwähne keine anderen Nummern, auch nicht mit Einschränkung.
 3. Wenn die bereitgestellten Briefe eine Frage nicht beantworten können, sage klar: "Die vorliegenden Briefe enthalten dazu keine Informationen."
 4. Unterscheide zwischen dem, was ein Brief explizit sagt (Regest), und Briefen, die nur Metadaten haben — kennzeichne letztere als "(nur Metadaten, kein Regest vorhanden)".
 5. Fasse dich kurz und präzise. Keine Spekulationen, keine Hintergrundinformationen aus deinem eigenen Wissen.
@@ -381,19 +479,48 @@ STRIKTE REGELN:
 8. Wenn die Frage eine umfassende Zusammenfassung des ganzen Archivs oder eines ganzen Themengebiets verlangt, erkläre, dass du nur die bereitgestellten Briefe interpretieren kannst.
 9. Wenn nach einem Brief gefragt wird, der nicht in den bereitgestellten Quellen enthalten ist, sage das klar — tu niemals so, als hättest du ihn gelesen.`;
 
-async function generateAnswer(question, context) {
-  const completion = await deepseek.chat.completions.create({
-    model: CHAT_MODEL,
-    temperature: 0.3,
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `Quellenausschnitte:\n\n${context}\n\nFrage: ${question}`,
-      },
-    ],
-  });
-  return completion.choices[0]?.message?.content ?? "";
+function extractCitedIds(answer) {
+  return [...new Set([...answer.matchAll(/Brief\s+(?:Nr\.?\s*)?(\d{3,6})/gi)].map((m) => m[1]))];
+}
+
+// Prompt rules alone do not reliably stop the model from citing letter
+// numbers that are not in the sources (observed: digit-mutations of real
+// ids on metadata-only questions). This is a deterministic guard: validate
+// the citations, and on violation retry once with an explicit correction.
+// A scholarly answer citing a nonexistent source is worse than no answer.
+async function generateAnswer(question, context, allowedIds) {
+  const messages = [
+    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "user",
+      content: `Quellenausschnitte:\n\n${context}\n\nFrage: ${question}`,
+    },
+  ];
+  const complete = async (msgs) => {
+    const completion = await deepseek.chat.completions.create({
+      model: CHAT_MODEL,
+      temperature: 0.3,
+      messages: msgs,
+    });
+    return completion.choices[0]?.message?.content ?? "";
+  };
+
+  let answer = await complete(messages);
+  const invented = extractCitedIds(answer).filter((id) => !allowedIds.has(id));
+  if (!invented.length) return { answer, citationRetry: false };
+
+  answer = await complete([
+    ...messages,
+    { role: "assistant", content: answer },
+    {
+      role: "user",
+      content:
+        `Deine Antwort nennt Brief-Nummern, die NICHT in den Quellenausschnitten vorkommen: ` +
+        `${invented.join(", ")}. Formuliere die Antwort neu und nenne ausschließlich ` +
+        `Brief-Nummern, die in den Quellenausschnitten stehen. Erwähne keine anderen Nummern.`,
+    },
+  ]);
+  return { answer, citationRetry: true };
 }
 
 const app = express();
@@ -409,14 +536,22 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const queryVec = await embedQuery(message);
-    const { hits, subjects, droppedSubjects, persons, keywordMatches, belowFloor } = retrieve(queryVec, message);
+    const { hits, subjects, droppedSubjects, persons, years, briefIdRefs, keywordMatches, belowFloor } =
+      retrieve(queryVec, message);
 
     // Nothing cleared the relevance floor: answering from an empty source list
     // would only invite invention, so say so instead of prompting the model.
-    const answer = hits.length
-      ? // Every hit is cited back to the caller; only the prompt is trimmed.
-        await generateAnswer(message, buildContext(hits.slice(0, CONTEXT_MAX)))
-      : "Zu dieser Frage findet sich im Archiv kein hinreichend relevanter Brief.";
+    let answer = "Zu dieser Frage findet sich im Archiv kein hinreichend relevanter Brief.";
+    let citationRetry = false;
+    if (hits.length) {
+      // Every hit is cited back to the caller; only the prompt is trimmed.
+      const allowedIds = new Set(hits.map((h) => String(h.record.id)));
+      ({ answer, citationRetry } = await generateAnswer(
+        message,
+        buildContext(hits.slice(0, CONTEXT_MAX)),
+        allowedIds
+      ));
+    }
 
     res.json({
       answer,
@@ -424,12 +559,15 @@ app.post("/api/chat", async (req, res) => {
         matchedSubjects: subjects,
         droppedSubjects,
         matchedPersons: persons,
+        matchedYears: years,
+        briefIdRefs,
         keywordMatches,
         embeddingTopK: TOP_K,
         minScore: MIN_SCORE,
         belowFloor,
         matches: hits.length,
         inContext: Math.min(hits.length, CONTEXT_MAX),
+        citationRetry,
       },
       // inContext marks what the model actually saw (the prompt is trimmed
       // to CONTEXT_MAX) — the UI must not present the rest as evidence for
@@ -448,6 +586,7 @@ app.post("/api/chat", async (req, res) => {
         cmif: r.cmif,
         sichtbar: r.sichtbar,
         hasRegest: !r.regestSynthetic,
+        hasFullText: Boolean(r.hasFullText),
         inContext: i < CONTEXT_MAX,
       })),
     });
@@ -468,12 +607,15 @@ app.post("/api/retrieve", async (req, res) => {
       return res.status(400).json({ error: "Missing 'message' string in request body." });
     }
     const queryVec = await embedQuery(message);
-    const { hits, subjects, droppedSubjects, persons, keywordMatches, belowFloor } = retrieve(queryVec, message);
+    const { hits, subjects, droppedSubjects, persons, years, briefIdRefs, keywordMatches, belowFloor } =
+      retrieve(queryVec, message);
     res.json({
       retrieval: {
         matchedSubjects: subjects,
         droppedSubjects,
         matchedPersons: persons,
+        matchedYears: years,
+        briefIdRefs,
         keywordMatches,
         embeddingTopK: TOP_K,
         minScore: MIN_SCORE,
