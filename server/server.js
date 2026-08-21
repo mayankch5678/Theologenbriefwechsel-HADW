@@ -70,6 +70,13 @@ let dim = 0;
 let publicIndices = [];
 // Normalized keyword subject -> public record indices carrying it.
 let subjectIndex = new Map();
+// Normalized sender/recipient name -> public record indices. Person names
+// never were in the keyword path — "Welche Briefe schrieb X an Y?" used to
+// rely on embeddings alone and scored 0% recall whenever the canonical name
+// carries brackets, titles or is a collective ("[Ludwig, Herzog von
+// Württemberg]", "Württembergische Theologen").
+let senderIndex = new Map();
+let recipientIndex = new Map();
 
 // Case- and punctuation-insensitive form used on both sides of the match.
 function normalize(s) {
@@ -93,9 +100,26 @@ function subjectForms(subject) {
   if (segments.length > 1) {
     for (const seg of segments) {
       const form = normalize(seg);
-      if (/\p{L}/u.test(form)) forms.add(form);
+      // Derived segments must be multi-word phrases: a single-word base like
+      // "bullinger" (from "Bullinger, Apologie des HK") would fire on every
+      // question naming that person and drag the whole genus back in.
+      if (/\p{L}/u.test(form) && form.includes(" ")) forms.add(form);
     }
   }
+  return [...forms].filter((f) => f.length >= MIN_SUBJECT_LEN);
+}
+
+// Canonical names ("Heinrich Weickersreuter, Abt", "[Christoph, Herzog von
+// Württemberg]") are indexed under their full normalized form, the part
+// before the first comma (name without office/title), and — for multi-word
+// names — the last name-word, so "Briefe von Andreae" still matches.
+// normalize() already turns brackets and commas into spaces.
+function personForms(name) {
+  const forms = new Set([normalize(name)]);
+  const base = normalize(name.split(",")[0]);
+  if (base) forms.add(base);
+  const words = base.split(" ").filter(Boolean);
+  if (words.length > 1) forms.add(words[words.length - 1]);
   return [...forms].filter((f) => f.length >= MIN_SUBJECT_LEN);
 }
 
@@ -105,6 +129,15 @@ async function loadIndex() {
 
   publicIndices = [];
   subjectIndex = new Map();
+  senderIndex = new Map();
+  recipientIndex = new Map();
+  const addTo = (index, name, i) => {
+    for (const form of personForms(name)) {
+      let bucket = index.get(form);
+      if (!bucket) index.set(form, (bucket = []));
+      bucket.push(i);
+    }
+  };
   for (let i = 0; i < records.length; i++) {
     if (records[i].sichtbar === "intern") continue;
     publicIndices.push(i);
@@ -119,6 +152,8 @@ async function loadIndex() {
         bucket.push(i);
       }
     }
+    for (const name of records[i].senders || []) addTo(senderIndex, name, i);
+    for (const name of records[i].recipients || []) addTo(recipientIndex, name, i);
   }
 
   const meta = JSON.parse(await readFile(path.join(DATA_DIR, "embeddings.meta.json"), "utf8"));
@@ -220,6 +255,58 @@ function matchSubjects(query) {
   return { indices: [...matched], subjects, droppedSubjects };
 }
 
+// Matches one side (sender or recipient) of the person index against the
+// question, with the same most-specific-wins suppression as subjects.
+function matchPersonSide(index, padded) {
+  const candidates = [];
+  for (const [form, bucket] of index) {
+    if (padded.includes(` ${form} `)) candidates.push({ form, bucket });
+  }
+  return candidates.filter(
+    (c) => !candidates.some((o) => o.form !== c.form && ` ${o.form} `.includes(` ${c.form} `))
+  );
+}
+
+// Person retrieval. When the question names people on *both* sides
+// ("Welche Briefe schrieb X an Y?"), the correct letters are exactly the
+// intersection of X-as-sender and Y-as-recipient — small and precise, so it
+// is taken uncapped (both directions of the correspondence match, since a
+// name in the question hits both indexes). With only one side named, each
+// matched name is treated like a subject: genus-sized buckets are dropped,
+// and bare single-word forms ("beste" could be a surname) are ignored —
+// too ambiguous without a second name to intersect with.
+function matchPersons(query) {
+  const q = normalize(query);
+  if (!q) return { indices: [], persons: [] };
+  const padded = ` ${q} `;
+
+  const senders = matchPersonSide(senderIndex, padded);
+  const recipients = matchPersonSide(recipientIndex, padded);
+  const union = (kept) => {
+    const s = new Set();
+    for (const c of kept) for (const i of c.bucket) s.add(i);
+    return s;
+  };
+
+  if (senders.length && recipients.length) {
+    const s = union(senders);
+    const r = union(recipients);
+    const indices = [...s].filter((i) => r.has(i));
+    const persons = [...new Set([...senders, ...recipients].map((c) => c.form))];
+    return { indices, persons };
+  }
+
+  const indices = new Set();
+  const persons = [];
+  for (const c of [...senders, ...recipients]) {
+    if (!c.form.includes(" ")) continue;
+    if (new Set(c.bucket).size > MAX_SUBJECT_BUCKET) continue;
+    persons.push(c.form);
+    for (const i of c.bucket) indices.add(i);
+  }
+  return { indices: [...indices], persons };
+}
+
 // Hybrid retrieval over public records only. There is no either/or: both
 // retrievers always run. Every letter carrying a matched keyword subject
 // (uncapped) is unioned with the embedding top-K, deduplicated by letter id,
@@ -231,9 +318,10 @@ function matchSubjects(query) {
 // with a handful of unrelated letters.
 function retrieve(queryVec, message) {
   const { indices, subjects, droppedSubjects } = matchSubjects(message);
+  const { indices: personIndices, persons } = matchPersons(message);
   const ranked = rankByCosine(queryVec, publicIndices);
 
-  const keyword = new Set(indices);
+  const keyword = new Set([...indices, ...personIndices]);
   const topK = new Set(ranked.slice(0, TOP_K).map((h) => h.index));
 
   // `ranked` is already sorted, so walking it preserves cosine order and keeps
@@ -254,7 +342,7 @@ function retrieve(queryVec, message) {
     hits.push(hit);
   }
 
-  return { hits, subjects, droppedSubjects, keywordMatches: keyword.size, belowFloor };
+  return { hits, subjects, droppedSubjects, persons, keywordMatches: keyword.size, belowFloor };
 }
 
 function buildContext(hits) {
@@ -315,7 +403,7 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const queryVec = await embedQuery(message);
-    const { hits, subjects, droppedSubjects, keywordMatches, belowFloor } = retrieve(queryVec, message);
+    const { hits, subjects, droppedSubjects, persons, keywordMatches, belowFloor } = retrieve(queryVec, message);
 
     // Nothing cleared the relevance floor: answering from an empty source list
     // would only invite invention, so say so instead of prompting the model.
@@ -329,6 +417,7 @@ app.post("/api/chat", async (req, res) => {
       retrieval: {
         matchedSubjects: subjects,
         droppedSubjects,
+        matchedPersons: persons,
         keywordMatches,
         embeddingTopK: TOP_K,
         minScore: MIN_SCORE,
@@ -367,11 +456,12 @@ app.post("/api/retrieve", async (req, res) => {
       return res.status(400).json({ error: "Missing 'message' string in request body." });
     }
     const queryVec = await embedQuery(message);
-    const { hits, subjects, droppedSubjects, keywordMatches, belowFloor } = retrieve(queryVec, message);
+    const { hits, subjects, droppedSubjects, persons, keywordMatches, belowFloor } = retrieve(queryVec, message);
     res.json({
       retrieval: {
         matchedSubjects: subjects,
         droppedSubjects,
+        matchedPersons: persons,
         keywordMatches,
         embeddingTopK: TOP_K,
         minScore: MIN_SCORE,
