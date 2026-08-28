@@ -446,6 +446,12 @@ function buildContext(hits) {
       // to mark auto-generated summaries, which it could never do while the
       // context hid which regests were synthesised (handoff §6.5).
       const parts = [`[${n}] Brief ${r.id} (${r.url})`, who];
+      // The editors' subject tags are why most letters are in the context at
+      // all — and a tag is assigned on the editors' reading of the manuscript,
+      // so the regest often never spells the subject out. Without this line
+      // the model saw 14 letters tagged "Unschuldsbeteuerung" and answered
+      // that none of them mention it.
+      if (r.keywordSubjects?.length) parts.push(`Schlagworte (Editoren): ${r.keywordSubjects.join("; ")}`);
       if (r.incipit) parts.push(`Incipit: "${r.incipit}"`);
       parts.push(
         r.regestSynthetic
@@ -477,7 +483,8 @@ STRIKTE REGELN:
 6. Wenn ein Brief als automatisch generierte Zusammenfassung markiert ist, weise darauf hin.
 7. Wenn die Frage Statistik über das GESAMTE Archiv betrifft (z.B. "Wie viele Briefe gibt es insgesamt?", "Wer schrieb die meisten Briefe?"), antworte: "Diese Frage betrifft das gesamte Archiv und kann aus den bereitgestellten Briefen nicht beantwortet werden."
 8. Wenn die Frage eine umfassende Zusammenfassung des ganzen Archivs oder eines ganzen Themengebiets verlangt, erkläre, dass du nur die bereitgestellten Briefe interpretieren kannst.
-9. Wenn nach einem Brief gefragt wird, der nicht in den bereitgestellten Quellen enthalten ist, sage das klar — tu niemals so, als hättest du ihn gelesen.`;
+9. Wenn nach einem Brief gefragt wird, der nicht in den bereitgestellten Quellen enthalten ist, sage das klar — tu niemals so, als hättest du ihn gelesen.
+10. Die Zeile "Schlagworte (Editoren)" enthält die von den Editoren der Edition vergebenen Sachschlagworte. Ein Brief, dessen Schlagwort zum gefragten Thema passt, BEHANDELT dieses Thema laut Editoren — auch wenn das Regest den Begriff nicht wörtlich nennt. Führe solche Briefe auf und stütze dich für den Inhalt auf das Regest.`;
 
 function extractCitedIds(answer) {
   return [...new Set([...answer.matchAll(/Brief\s+(?:Nr\.?\s*)?(\d{3,6})/gi)].map((m) => m[1]))];
@@ -546,11 +553,25 @@ app.post("/api/chat", async (req, res) => {
     if (hits.length) {
       // Every hit is cited back to the caller; only the prompt is trimmed.
       const allowedIds = new Set(hits.map((h) => String(h.record.id)));
-      ({ answer, citationRetry } = await generateAnswer(
-        message,
-        buildContext(hits.slice(0, CONTEXT_MAX)),
-        allowedIds
-      ));
+      try {
+        ({ answer, citationRetry } = await generateAnswer(
+          message,
+          buildContext(hits.slice(0, CONTEXT_MAX)),
+          allowedIds
+        ));
+      } catch (err) {
+        // Retrieval succeeded; only the cloud generation step failed. Say so
+        // precisely — "Connection error." gave the user no way to tell
+        // whether search, the model, or the network was at fault.
+        const cause = err?.cause?.cause?.code || err?.cause?.code || err?.status || err?.message;
+        console.error("DeepSeek generation failed:", cause);
+        return res.status(503).json({
+          error:
+            `Die Suche hat ${hits.length} Briefe gefunden, aber der Antwortdienst (DeepSeek) ` +
+            `ist derzeit nicht erreichbar (${cause}). Bitte Netzwerk/DNS prüfen und erneut versuchen.`,
+          sources: [],
+        });
+      }
     }
 
     res.json({
