@@ -209,11 +209,28 @@ function renderSourceList(sources) {
       card.appendChild(head);
 
       card.appendChild(el('div', 'meta', s.long));
+      // Why this letter is in the result — the same "Treffer" line the
+      // model sees, so a researcher can tell a curated-tag match from a
+      // merely similar-sounding embedding neighbour.
+      if (s.reasons && s.reasons.length) {
+        card.appendChild(el('div', 'meta', 'Treffer: ' + s.reasons.join('; ')));
+      }
 
       if (s.hasRegest) {
         card.appendChild(el('div', 'snippet', s.regest));
       } else {
         card.appendChild(el('div', 'snippet', '(Nur Metadaten – automatisch generierte Zusammenfassung, kein editorisches Regest.)'));
+      }
+      // The transcription/commentary passage that matched the question —
+      // primary-source evidence the reader can check against the regest.
+      if (s.passage && s.passage.text) {
+        const det = document.createElement('details');
+        det.className = 'cmif';
+        det.appendChild(el('summary', null, s.passage.kind === 'volltext' ? 'Treffer-Passage aus der Transkription' : 'Treffer-Passage aus der Erläuterung'));
+        const pre = document.createElement('pre');
+        pre.textContent = s.passage.text;
+        det.appendChild(pre);
+        card.appendChild(det);
       }
 
       const det = document.createElement('details');

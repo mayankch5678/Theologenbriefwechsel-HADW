@@ -4,9 +4,13 @@ node_modules/
 # Generated artefacts — rebuild with `npm run build:corpus` / `npm run build:index`.
 data/embeddings.bin
 data/corpus.jsonl
+data/fulltext.jsonl
+data/chunks.jsonl
+data/chunk_embeddings.bin
 
 *.bak
 
 # Per-run eval output — baseline.json and fixtures/ ARE committed.
 test/results-latest.json
 test/review-latest.md
+rerank/.venv/

@@ -87,6 +87,25 @@ size). ~2.5 h at 4.6 letters/s on an 8 GB M-series Air; ~30 min at ~20/s on
 an M1 Pro. Only needed when the corpus `text` field changes — metadata-only
 corpus rebuilds keep existing embeddings valid.
 
+## Optional layers: passage index and rerank
+
+```
+npm run build:chunks      # transcriptions/commentary -> data/chunks.jsonl + chunk_embeddings.bin
+                          # (~16.8k chunks of 800 chars / 150 overlap, public letters only,
+                          #  ~15 min via Ollama, resumable; needs build:corpus first)
+uv run --project rerank python rerank/server.py     # cross-encoder sidecar on :5056
+                          # (BAAI/bge-reranker-v2-m3, first start downloads ~1.1 GB; uv sync once)
+```
+
+Both are optional: the server logs what it found at startup and works
+without either. With the chunk index, the top matching transcription
+passages join the retrieval candidates and the *matching passage* is shown
+to the model (and in the UI) instead of the first 1,500 chars. With the
+sidecar, embedding-only extras are re-scored and those below `RERANK_MIN`
+(0.3, calibrated with `node test/calibrateRerank.js`) are dropped;
+keyword-backed hits are never touched. Closed-form questions (X an Y,
+a year, a letter id) skip the fuzzy paths entirely.
+
 ## Evaluation
 
 `test/` contains the evaluation harness (see the question catalog in

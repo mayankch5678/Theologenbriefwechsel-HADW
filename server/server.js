@@ -38,6 +38,25 @@ const EMBED_EXTRA_K = Number(process.env.EMBED_EXTRA_K || 10);
 // How many of the in-context letters get their transcription excerpt
 // included. Caps prompt growth: excerpts are up to 1,500 chars each.
 const VOLLTEXT_IN_CONTEXT = Number(process.env.VOLLTEXT_IN_CONTEXT || 8);
+// Chunk-level index over transcriptions/commentary (scripts/buildChunkIndex.js).
+// Top chunks are mapped back to their letters and join the embedding path;
+// the matching passage is what the model then sees as evidence.
+const CHUNK_TOP_K = Number(process.env.CHUNK_TOP_K || 20);
+const CHUNK_EXTRA_K = Number(process.env.CHUNK_EXTRA_K || 10); // letters chunks may add
+const CHUNK_MIN_SCORE = Number(process.env.CHUNK_MIN_SCORE || 0.5);
+// Optional cross-encoder rerank sidecar (rerank/server.py). When reachable,
+// embedding-only extras are re-scored against the question and those below
+// RERANK_MIN are dropped — the residual precision drain after the keyword
+// fixes. Keyword-backed hits (curated tags, names, dates) are never dropped.
+// Calibrated on the eval set (test/calibrateRerank.js, 2026-08): across 51
+// gold questions not one embedding-only extra was a gold letter, and their
+// rerank scores had median 0.005 and p90 0.78. 0.3 drops the ~78% that the
+// cross-encoder rates irrelevant while keeping the extras it endorses — the
+// tag-derived gold cannot see the value of untagged-but-relevant letters,
+// so the threshold deliberately stops short of dropping everything.
+const RERANK_URL = process.env.RERANK_URL || "http://127.0.0.1:5056";
+const RERANK_MIN = Number(process.env.RERANK_MIN || 0.3);
+const RERANK_MAX_DOCS = Number(process.env.RERANK_MAX_DOCS || 80);
 // The keyword path returns every match, but the prompt can't: a broad subject
 // matches thousands of letters and would overflow the chat model's context.
 // Only what we send to DeepSeek is capped — the API response stays uncapped.
@@ -92,6 +111,12 @@ let recipientIndex = new Map();
 let yearIndex = new Map();
 // Letter id ("18494") -> public record index, for direct-lookup questions.
 let briefIdIndex = new Map();
+// Chunk index (optional): chunks[i] <-> chunkVectors[i*chunkDim ...].
+let chunks = [];
+let chunkVectors = null;
+let chunkNorms = null;
+let chunkDim = 0;
+let rerankEnabled = false;
 
 // Case- and punctuation-insensitive form used on both sides of the match.
 function normalize(s) {
@@ -196,6 +221,47 @@ async function loadIndex() {
   );
 }
 
+// Loads whatever part of the chunk index exists. A build in progress is
+// usable up to meta.count (vectors are appended in chunks.jsonl order), so
+// the server never has to wait for the full 15-minute embedding run.
+async function loadChunkIndex() {
+  const chunksFile = path.join(DATA_DIR, "chunks.jsonl");
+  const metaFile = path.join(DATA_DIR, "chunk_embeddings.meta.json");
+  const vecFile = path.join(DATA_DIR, "chunk_embeddings.bin");
+  if (!existsSync(chunksFile) || !existsSync(metaFile) || !existsSync(vecFile)) {
+    console.log("Chunk index not built (npm run build:chunks) — transcription passages not searchable.");
+    return;
+  }
+  const meta = JSON.parse(await readFile(metaFile, "utf8"));
+  const all = (await readFile(chunksFile, "utf8")).split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const buf = await readFile(vecFile);
+  const available = Math.min(meta.count, all.length, Math.floor(buf.byteLength / (meta.dim * 4)));
+  chunkDim = meta.dim;
+  chunks = all.slice(0, available);
+  chunkVectors = new Float32Array(buf.buffer, buf.byteOffset, available * chunkDim);
+  chunkNorms = new Float32Array(available);
+  for (let i = 0; i < available; i++) {
+    let s = 0;
+    const base = i * chunkDim;
+    for (let d = 0; d < chunkDim; d++) s += chunkVectors[base + d] * chunkVectors[base + d];
+    chunkNorms[i] = Math.sqrt(s);
+  }
+  console.log(
+    `Loaded chunk index: ${available}/${all.length} chunks embedded` +
+      (available < all.length ? " (build in progress — partial)" : "") + "."
+  );
+}
+
+async function probeRerank() {
+  try {
+    const res = await fetch(`${RERANK_URL}/health`, { signal: AbortSignal.timeout(2000) });
+    rerankEnabled = res.ok;
+  } catch {
+    rerankEnabled = false;
+  }
+  console.log(rerankEnabled ? `Rerank sidecar reachable at ${RERANK_URL}.` : "Rerank sidecar not running — skipping rerank.");
+}
+
 async function embedQuery(text) {
   const res = await fetch(`${OLLAMA_URL}/api/embed`, {
     method: "POST",
@@ -229,6 +295,68 @@ function rankByCosine(queryVec, candidateIndices) {
 
   hits.sort((a, b) => b.score - a.score);
   return hits;
+}
+
+// Best-matching transcription/commentary passage per letter among the top
+// chunks. Returns Map<record index, {score, text, kind}>.
+function rankChunks(queryVec) {
+  const best = new Map();
+  if (!chunkVectors || !chunks.length) return best;
+  let qNorm = 0;
+  for (let d = 0; d < chunkDim; d++) qNorm += queryVec[d] * queryVec[d];
+  qNorm = Math.sqrt(qNorm);
+  const scored = new Array(chunks.length);
+  for (let i = 0; i < chunks.length; i++) {
+    const base = i * chunkDim;
+    let dot = 0;
+    for (let d = 0; d < chunkDim; d++) dot += chunkVectors[base + d] * queryVec[d];
+    scored[i] = { i, score: chunkNorms[i] > 0 && qNorm > 0 ? dot / (chunkNorms[i] * qNorm) : 0 };
+  }
+  scored.sort((a, b) => b.score - a.score);
+  for (const { i, score } of scored.slice(0, CHUNK_TOP_K)) {
+    const c = chunks[i];
+    const idx = briefIdIndex.get(String(c.letterId));
+    if (idx === undefined) continue; // not a public letter
+    if (!best.has(idx) || best.get(idx).score < score) best.set(idx, { score, text: c.text, kind: c.kind });
+  }
+  return best;
+}
+
+// Cross-encoder pass over the merged hits (see RERANK_* above). Embedding-
+// only extras below RERANK_MIN are dropped and the rest re-ordered by rerank
+// score; keyword-backed hits keep their specificity order and are never
+// dropped. Any failure of the sidecar degrades to "no rerank", never to an
+// error.
+async function applyRerank(query, hits) {
+  if (!rerankEnabled || !hits.length) return { hits, reranked: false, dropped: 0 };
+  // Only the embedding-only extras are scored: keyword-backed hits are never
+  // dropped or reordered, so reranking them (up to 80 docs on a 396-source
+  // year question) cost 5–10 s per query for nothing.
+  const keywordBacked = hits.filter((h) => h.specificity > 0 || !h.reasons?.[0]?.startsWith("inhaltlich"));
+  const extras = hits.filter((h) => !keywordBacked.includes(h)).slice(0, RERANK_MAX_DOCS);
+  if (!extras.length) return { hits, reranked: true, dropped: 0 };
+  const docs = extras.map((h) => ({
+    id: String(h.record.id),
+    text: [h.record.long, h.record.regest, h.chunkText].filter(Boolean).join("\n").slice(0, 1500),
+  }));
+  let scores;
+  try {
+    const res = await fetch(`${RERANK_URL}/rerank`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, docs }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) throw new Error(`rerank ${res.status}`);
+    scores = new Map((await res.json()).scores.map((s) => [s.id, s.score]));
+  } catch (err) {
+    console.warn("Rerank failed, continuing without:", err.message);
+    return { hits, reranked: false, dropped: 0 };
+  }
+  for (const h of extras) h.rerank = scores.get(String(h.record.id));
+  const kept = extras.filter((h) => h.rerank === undefined || h.rerank >= RERANK_MIN);
+  kept.sort((a, b) => (b.rerank ?? 0) - (a.rerank ?? 0));
+  return { hits: [...keywordBacked, ...kept], reranked: true, dropped: extras.length - kept.length };
 }
 
 // Keyword pre-filter: a subject counts as a match when it appears inside the
@@ -318,7 +446,8 @@ function matchPersons(query) {
     const r = union(recipients);
     const indices = [...s].filter((i) => r.has(i));
     const persons = [...new Set([...senders, ...recipients].map((c) => c.form))];
-    return { indices, persons };
+    // exact: both correspondents named — the answer is a closed set.
+    return { indices, persons, exact: indices.length > 0 };
   }
 
   const indices = new Set();
@@ -329,7 +458,7 @@ function matchPersons(query) {
     persons.push(c.form);
     for (const i of c.bucket) indices.add(i);
   }
-  return { indices: [...indices], persons };
+  return { indices: [...indices], persons, exact: false };
 }
 
 // Deterministic year filter. Only fires on explicitly date-shaped phrasing
@@ -388,16 +517,37 @@ function retrieve(queryVec, message) {
       years: [],
       briefIdRefs: briefIds.refs,
       keywordMatches: 0,
+      chunkMatches: 0,
       belowFloor: 0,
     };
   }
 
   const { indices, subjects, droppedSubjects, matchCount } = matchSubjects(message);
-  const { indices: personIndices, persons } = matchPersons(message);
+  const { indices: personIndices, persons, exact: exactCorrespondence } = matchPersons(message);
   const { indices: yearIndices, years } = matchYears(message);
   const ranked = rankByCosine(queryVec, publicIndices);
 
   const keyword = new Set([...indices, ...personIndices, ...yearIndices, ...briefIds.indices]);
+  // "Letters from X to Y", "letters of 1563", "Brief 18494" are closed-form
+  // database questions — the structured path IS the answer. Fuzzy extras
+  // (embedding neighbours, transcription passages that merely mention the
+  // names) can only add noise there: with them on, person questions lost
+  // 10–20 points of precision to letters whose transcription named X or Y.
+  // Subject questions keep the fuzzy paths — an untagged but relevant
+  // letter is exactly what they are for.
+  const structured = exactCorrespondence || yearIndices.length > 0 || briefIds.indices.length > 0;
+  // Transcription/commentary passages: the top chunks, mapped to letters.
+  // These join the embedding path (they are similarity evidence, not
+  // curated matches) and carry the matching passage for the context.
+  const chunkBest = rankChunks(queryVec);
+  const chunkIndices = structured
+    ? []
+    : [...chunkBest.entries()]
+        .filter(([, c]) => c.score >= CHUNK_MIN_SCORE)
+        .sort((a, b) => b[1].score - a[1].score)
+        .slice(0, CHUNK_EXTRA_K)
+        .map(([i]) => i);
+  const chunkSet = new Set(chunkIndices);
   // Why each letter is in the result — shown to the model, because a letter
   // buried under 42 tags was denied to carry the asked-for tag at all.
   const reasonByIndex = new Map();
@@ -413,7 +563,7 @@ function retrieve(queryVec, message) {
   addReason(briefIds.indices, "Brief-Nummer in der Frage genannt");
   // With keyword evidence in hand the embedding path is a supplement, not
   // the main course — cap how many embedding-only extras it may add.
-  const embedK = keyword.size ? EMBED_EXTRA_K : TOP_K;
+  const embedK = structured ? 0 : keyword.size ? EMBED_EXTRA_K : TOP_K;
   const topK = new Set(ranked.slice(0, embedK).map((h) => h.index));
 
   // `ranked` is already sorted, so walking it preserves cosine order and keeps
@@ -422,16 +572,28 @@ function retrieve(queryVec, message) {
   const hits = [];
   let belowFloor = 0;
   for (const hit of ranked) {
-    if (!keyword.has(hit.index) && !topK.has(hit.index)) continue;
+    if (!keyword.has(hit.index) && !topK.has(hit.index) && !chunkSet.has(hit.index)) continue;
     if (seenIds.has(hit.record.id)) continue;
     seenIds.add(hit.record.id);
+    const chunk = chunkBest.get(hit.index);
     // The floor gates only the fuzzy path: a keyword hit is backed by a
-    // curated tag and stays in regardless of its cosine score.
-    if (!keyword.has(hit.index) && hit.score < MIN_SCORE) {
+    // curated tag and stays in regardless of its cosine score. A letter
+    // reached through a passage is judged on the passage score.
+    if (!keyword.has(hit.index) && hit.score < MIN_SCORE && !chunkSet.has(hit.index)) {
       belowFloor++;
       continue;
     }
-    hit.reasons = reasonByIndex.get(hit.index) || ["inhaltlich ähnlich (Embedding)"];
+    if (chunk) {
+      hit.chunkText = chunk.text;
+      hit.chunkKind = chunk.kind;
+      hit.chunkScore = chunk.score;
+      if (chunk.score > hit.score) hit.score = chunk.score;
+    }
+    hit.reasons =
+      reasonByIndex.get(hit.index) ||
+      (chunkSet.has(hit.index)
+        ? [`inhaltlich ähnliche Passage in ${chunk.kind === "volltext" ? "der Transkription" : "der Erläuterung"} (Embedding)`]
+        : ["inhaltlich ähnlich (Embedding)"]);
     hit.specificity = (matchCount.get(hit.index) || 0) + (personIndices.includes(hit.index) ? 1 : 0);
     hits.push(hit);
   }
@@ -456,6 +618,7 @@ function retrieve(queryVec, message) {
     years,
     briefIdRefs: briefIds.refs,
     keywordMatches: keyword.size,
+    chunkMatches: chunkIndices.length,
     belowFloor,
   };
 }
@@ -508,7 +671,11 @@ function buildContext(hits, matchedForms = new Set()) {
       // Primary-source evidence for the top hits: the verbatim transcription
       // excerpt (early-modern German/Latin). Limited to the first few letters
       // so 60 excerpts can't blow up the prompt.
-      if (r.volltext && i < VOLLTEXT_IN_CONTEXT) {
+      // The passage that matched the question beats the first 1,500 chars.
+      if (hits[i].chunkText) {
+        const label = hits[i].chunkKind === "volltext" ? "Transkription (Treffer-Passage)" : "Editorische Erläuterung (Treffer-Passage)";
+        parts.push(`${label}: ${hits[i].chunkText}`);
+      } else if (r.volltext && i < VOLLTEXT_IN_CONTEXT) {
         parts.push(`Transkription (Auszug): ${r.volltext}`);
       }
       if (r.erlaeuterung && i < VOLLTEXT_IN_CONTEXT) {
@@ -628,8 +795,10 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const queryVec = await embedQuery(message);
-    const { hits, subjects, matchedForms, droppedSubjects, persons, years, briefIdRefs, keywordMatches, belowFloor } =
-      retrieve(queryVec, message);
+    const retrieved = retrieve(queryVec, message);
+    const { subjects, matchedForms, droppedSubjects, persons, years, briefIdRefs, keywordMatches, chunkMatches, belowFloor } =
+      retrieved;
+    const { hits, reranked, dropped: rerankDropped } = await applyRerank(message, retrieved.hits);
 
     // Nothing cleared the relevance floor: answering from an empty source list
     // would only invite invention, so say so instead of prompting the model.
@@ -673,6 +842,9 @@ app.post("/api/chat", async (req, res) => {
         matchedYears: years,
         briefIdRefs,
         keywordMatches,
+        chunkMatches,
+        reranked,
+        rerankDropped,
         embeddingTopK: TOP_K,
         minScore: MIN_SCORE,
         belowFloor,
@@ -685,10 +857,13 @@ app.post("/api/chat", async (req, res) => {
       // to CONTEXT_MAX) — the UI must not present the rest as evidence for
       // the answer. hasRegest now means what it says: a synthesised
       // metadata abstract is not a scholarly regest.
-      sources: hits.map(({ record: r, score }, i) => ({
+      sources: hits.map(({ record: r, score, reasons, chunkText, chunkKind, rerank }, i) => ({
         id: r.id,
         url: r.url,
         score: Number(score.toFixed(3)),
+        rerank: rerank === undefined ? undefined : Number(rerank.toFixed(3)),
+        reasons,
+        passage: chunkText ? { kind: chunkKind, text: chunkText } : undefined,
         long: r.long,
         dateDisplay: r.dateDisplay,
         senders: r.senders,
@@ -719,8 +894,9 @@ app.post("/api/retrieve", async (req, res) => {
       return res.status(400).json({ error: "Missing 'message' string in request body." });
     }
     const queryVec = await embedQuery(message);
-    const { hits, subjects, droppedSubjects, persons, years, briefIdRefs, keywordMatches, belowFloor } =
-      retrieve(queryVec, message);
+    const retrieved = retrieve(queryVec, message);
+    const { subjects, droppedSubjects, persons, years, briefIdRefs, keywordMatches, chunkMatches, belowFloor } = retrieved;
+    const { hits, reranked, dropped: rerankDropped } = await applyRerank(message, retrieved.hits);
     res.json({
       retrieval: {
         matchedSubjects: subjects,
@@ -729,15 +905,21 @@ app.post("/api/retrieve", async (req, res) => {
         matchedYears: years,
         briefIdRefs,
         keywordMatches,
+        chunkMatches,
+        reranked,
+        rerankDropped,
         embeddingTopK: TOP_K,
         minScore: MIN_SCORE,
         belowFloor,
         matches: hits.length,
         inContext: Math.min(hits.length, CONTEXT_MAX),
       },
-      sources: hits.map(({ record: r, score }) => ({
+      sources: hits.map(({ record: r, score, reasons, rerank, chunkKind }) => ({
         id: r.id,
         score: Number(score.toFixed(3)),
+        rerank: rerank === undefined ? undefined : Number(rerank.toFixed(3)),
+        reasons,
+        passage: chunkKind,
         sichtbar: r.sichtbar,
       })),
     });
@@ -753,12 +935,16 @@ app.get("/api/health", (req, res) => {
     letters: records.length,
     retrievable: publicIndices.length,
     subjects: subjectIndex.size,
+    chunks: chunks.length,
+    rerank: rerankEnabled,
     chatModel: CHAT_MODEL,
     embedModel: EMBED_MODEL,
   });
 });
 
 await loadIndex();
+await loadChunkIndex();
+await probeRerank();
 app.listen(PORT, () => {
   console.log(`ThBw RAG chatbot running at http://localhost:${PORT}`);
 });

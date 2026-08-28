@@ -105,6 +105,10 @@ async function main() {
   console.log(`Processing ${total} letters...`);
 
   const records = [];
+  // Full primary-source text goes to a sidecar file consumed by
+  // buildChunkIndex.js — keeping corpus.jsonl (loaded whole into server
+  // memory) free of 9.4M chars of transcription.
+  const fulltext = [];
   let i = 0;
   let withRegest = 0;
   let synthesized = 0;
@@ -155,6 +159,9 @@ async function main() {
     const erlaeuterung = asString(unwrap(doc.erlaeuterung)) || null;
     const volltextFull = asString(unwrap(doc.transkription?.volltext));
     const volltext = volltextFull ? volltextFull.slice(0, 1500) : null;
+    if (volltextFull || erlaeuterung) {
+      fulltext.push({ id: shortId, sichtbar, volltext: volltextFull || null, erlaeuterung });
+    }
 
     // Every record gets a regest: the editorial one where it exists, otherwise
     // a synthetic metadata abstract, so no letter ends up without searchable text.
@@ -214,8 +221,11 @@ async function main() {
   await mkdir(outDir, { recursive: true });
   const outFile = path.join(outDir, "corpus.jsonl");
   await writeFile(outFile, records.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
+  const fulltextFile = path.join(outDir, "fulltext.jsonl");
+  await writeFile(fulltextFile, fulltext.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
 
   console.log(`\nWrote ${records.length} letters to ${outFile}`);
+  console.log(`Wrote ${fulltext.length} letters with transcription/commentary to ${fulltextFile}`);
   console.log(`  with regest (scholarly summary): ${withRegest}`);
   console.log(`  with synthetic metadata abstract: ${synthesized}`);
   const offen = records.filter((r) => r.sichtbar === "offen").length;

@@ -11,7 +11,8 @@
     "build:questions": "node test/generateQuestions.js",
     "eval": "node test/eval.js",
     "eval:full": "node test/eval.js --full",
-    "start": "node server/server.js"
+    "start": "node server/server.js",
+    "build:chunks": "node scripts/buildChunkIndex.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
