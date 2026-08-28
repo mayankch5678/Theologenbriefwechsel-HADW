@@ -123,6 +123,34 @@ function normalize(s) {
   return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
+// Crude German stemming, applied identically on both sides of a match:
+// fold umlauts, strip one inflectional suffix. "Kometen" -> "komet",
+// "Träume" -> "traum". Whole-word matching was inflection-blind: a question
+// about "Kometen" found 4 of 24 letters tagged "Komet".
+function stemWord(w) {
+  let s = w.replace(/ä/g, "a").replace(/ö/g, "o").replace(/ü/g, "u").replace(/ß/g, "ss");
+  if (s.length > 5 && /(en|er|em|es)$/.test(s)) s = s.slice(0, -2);
+  else if (s.length > 4 && /[ens]$/.test(s)) s = s.slice(0, -1);
+  return s;
+}
+function stemPhrase(s) {
+  return normalize(s).split(" ").filter(Boolean).map(stemWord).join(" ");
+}
+
+// Question scaffolding and function words that must never become search
+// terms for the regest text path.
+const STOPWORDS = new Set(
+  (
+    "welche welcher welches wer was wie wann wo warum briefe brief erwähnen erwähnt erwähnung nennen nennt " +
+    "gibt geben zu über von an der die das den dem des ein eine einen einem einer und oder mit in im aus " +
+    "jahr jahre jahren schrieb schreibt schrieben betreffen betrifft handeln behandeln thema sind ist " +
+    "werden wurde wurden große großen groß alle diese dieser dieses dies etwas nicht auch noch sich " +
+    "bei nach vor für durch als auf um wegen zwischen unter ohne gegen seinem seiner seine sein ihrem " +
+    "ihrer ihre ihr dass wird hat haben hatte hatten kann können soll sollen will wollen " +
+    "viele vielen enthält enthalten insgesamt beste besten gute guten sehr mehr meisten einige welchen"
+  ).split(" ")
+);
+
 // Subjects are curated strings that often carry a parenthetical qualifier
 // ("Augsburger Reichstag (1530)") or comma-separated qualifiers
 // ("Heidelberger Katechismus, Frage 60"). Index the stripped form, the
@@ -160,7 +188,34 @@ function personForms(name) {
   if (base) forms.add(base);
   const words = base.split(" ").filter(Boolean);
   if (words.length > 1) forms.add(words[words.length - 1]);
-  return [...forms].filter((f) => f.length >= MIN_SUBJECT_LEN);
+  // Stemmed variants of every form so inflected questions still match.
+  const out = [...forms].filter((f) => f.length >= MIN_SUBJECT_LEN);
+  for (const f of out.slice()) {
+    const st = stemPhrase(f);
+    if (st && st !== f && st.length >= MIN_SUBJECT_LEN) out.push(st);
+  }
+  return [...new Set(out)];
+}
+
+// Stemmed word -> public record indices whose regest (or editorial
+// commentary) contains it. The third deterministic path: for content
+// questions ("Welche Briefe erwähnen Gicht?") the answer key is literally
+// "the regest mentions it" — embedding cosine on short generic queries
+// scored 1% recall on exactly those letters.
+let regestIndex = new Map();
+
+// Stemmed regest+commentary text per record, for phrase checks.
+let regestStems = [];
+
+function indexRegestWords(i, text) {
+  if (!text) return;
+  const stemmed = normalize(text).split(" ").filter(Boolean).map(stemWord);
+  regestStems[i] = (regestStems[i] || "") + " " + stemmed.join(" ") + " ";
+  for (const key of new Set(stemmed.filter((w) => w.length >= 3))) {
+    let bucket = regestIndex.get(key);
+    if (!bucket) regestIndex.set(key, (bucket = new Set()));
+    bucket.add(i);
+  }
 }
 
 async function loadIndex() {
@@ -201,6 +256,8 @@ async function loadIndex() {
       bucket.push(i);
     }
     briefIdIndex.set(String(records[i].id), i);
+    if (!records[i].regestSynthetic) indexRegestWords(i, records[i].regest);
+    indexRegestWords(i, records[i].erlaeuterung);
   }
 
   const meta = JSON.parse(await readFile(path.join(DATA_DIR, "embeddings.meta.json"), "utf8"));
@@ -371,9 +428,14 @@ function matchSubjects(query) {
   // the subject "Hand" matches inside "handeln" and drags in unrelated letters.
   const padded = ` ${q} `;
 
+  const paddedStem = ` ${stemPhrase(query)} `;
   const candidates = [];
   for (const [form, bucket] of subjectIndex) {
-    if (padded.includes(` ${form} `) || (q.length >= MIN_SUBJECT_LEN && ` ${form} `.includes(padded))) {
+    if (
+      padded.includes(` ${form} `) ||
+      paddedStem.includes(` ${form} `) ||
+      (q.length >= MIN_SUBJECT_LEN && ` ${form} `.includes(padded))
+    ) {
       candidates.push({ form, bucket });
     }
   }
@@ -461,6 +523,59 @@ function matchPersons(query) {
   return { indices: [...indices], persons, exact: false };
 }
 
+// Regest text path. Content terms = question words minus scaffolding and
+// stopwords, stemmed. All terms must co-occur in a letter's regest (AND); if
+// that yields nothing and there were several terms, fall back to any term
+// (OR). Buckets larger than MAX_SUBJECT_BUCKET are genus words and are
+// dropped, exactly like generic subjects.
+function matchRegest(query) {
+  const terms = [
+    ...new Set(
+      normalize(query)
+        .split(" ")
+        .filter((w) => w.length >= 4 && !STOPWORDS.has(w) && /\p{L}/u.test(w))
+        .map(stemWord)
+    ),
+  ];
+  if (!terms.length) return { indices: [], terms: [], droppedTerms: [] };
+  // German compounds hide the head word: "Hexenprozess", "Traumgesicht",
+  // "Gichtanfall". A term also matches index keys it is a prefix of (bounded
+  // so "traum" does not reach absurd lengths).
+  const bucketFor = (t) => {
+    const out = new Set(regestIndex.get(t) || []);
+    if (t.length >= 4) {
+      for (const [key, bucket] of regestIndex) {
+        if (key !== t && key.length <= t.length + 12 && key.startsWith(t)) for (const i of bucket) out.add(i);
+      }
+    }
+    return out;
+  };
+  const buckets = terms.map((t) => ({ t, bucket: bucketFor(t) }));
+  const usable = buckets.filter((b) => b.bucket.size > 0);
+  if (!usable.length) return { indices: [], terms: [], droppedTerms: [] };
+
+  // AND only. An OR fallback was tried and turned leftover adjectives into
+  // hits ("beste" from the pizza question matched 9 regests). If a term is
+  // absent from every regest the question simply has no regest-path answer.
+  if (usable.length < terms.length) {
+    return { indices: [], terms: [], droppedTerms: terms.filter((t) => !usable.some((b) => b.t === t)).map((t) => `${t} (not in any regest)`) };
+  }
+  const droppedTerms = [];
+  let result = [...usable[0].bucket].filter((i) => usable.every((b) => b.bucket.has(i)));
+  // Several terms must form a phrase, in order and adjacent (on stems):
+  // bag-of-words AND turned "Heidelberger Katechismus" into 14 letters that
+  // merely mention Heidelberg and some other catechism.
+  if (usable.length > 1) {
+    const phrase = ` ${usable.map((b) => b.t).join(" ")} `;
+    result = result.filter((i) => (regestStems[i] || "").includes(phrase));
+  }
+  if (result.length > MAX_SUBJECT_BUCKET) {
+    droppedTerms.push(`${usable.map((b) => b.t).join("+")} (${result.length} letters, generic)`);
+    result = [];
+  }
+  return { indices: result, terms: usable.map((b) => b.t), droppedTerms };
+}
+
 // Deterministic year filter. Only fires on explicitly date-shaped phrasing
 // ("aus dem Jahr 1563", "datiert 1563") — a bare year in a question usually
 // qualifies a subject or an edition, not a date filter.
@@ -504,7 +619,31 @@ function matchBriefIds(query) {
 // themselves curated subjects — "Briefe", "Jahr", "Nachrichten" — so a
 // keyword-only path would let one of those replace a good embedding search
 // with a handful of unrelated letters.
+// Archive-level counting/statistics is not a retrieval question: no set of
+// retrieved letters can answer "how many letters are there". Left to the
+// model it was flaky — refusing on one run, counting the 40 letters that
+// happen to mention "Archiv" on the next. Deterministic short-circuit.
+const AGGREGATE_RE = /\b(wie ?viele|wieviel|anzahl|insgesamt|die meisten|am häufigsten|durchschnittlich)\b/i;
+const AGGREGATE_ANSWER =
+  "Diese Frage betrifft das gesamte Archiv (Zählung oder Statistik) und kann aus einzelnen Briefen nicht beantwortet werden. Für Zahlen über den Gesamtbestand nutzen Sie bitte die Suche und Filter der ThBw-Datenbank.";
+
 function retrieve(queryVec, message) {
+  if (AGGREGATE_RE.test(message)) {
+    return {
+      hits: [],
+      aggregate: true,
+      subjects: [],
+      droppedSubjects: [],
+      persons: [],
+      years: [],
+      briefIdRefs: [],
+      regestTerms: [],
+      droppedRegestTerms: [],
+      keywordMatches: 0,
+      chunkMatches: 0,
+      belowFloor: 0,
+    };
+  }
   const briefIds = matchBriefIds(message);
   if (briefIds.unresolved) {
     // The question asked for specific letters that don't (publicly) exist —
@@ -536,6 +675,10 @@ function retrieve(queryVec, message) {
   // Subject questions keep the fuzzy paths — an untagged but relevant
   // letter is exactly what they are for.
   const structured = exactCorrespondence || yearIndices.length > 0 || briefIds.indices.length > 0;
+  // Regest text terms: a deterministic content path, off for closed-form
+  // questions (names in a regest are not the correspondence asked for).
+  const regest = structured ? { indices: [], terms: [], droppedTerms: [] } : matchRegest(message);
+  for (const i of regest.indices) keyword.add(i);
   // Transcription/commentary passages: the top chunks, mapped to letters.
   // These join the embedding path (they are similarity evidence, not
   // curated matches) and carry the matching passage for the context.
@@ -561,6 +704,7 @@ function retrieve(queryVec, message) {
   addReason(personIndices, "Absender/Empfänger passt zur Frage");
   addReason(yearIndices, `Jahr ${years.join("/")} passt zur Frage`);
   addReason(briefIds.indices, "Brief-Nummer in der Frage genannt");
+  if (regest.terms.length) addReason(regest.indices, `Regest nennt: ${regest.terms.join(", ")}`);
   // With keyword evidence in hand the embedding path is a supplement, not
   // the main course — cap how many embedding-only extras it may add.
   const embedK = structured ? 0 : keyword.size ? EMBED_EXTRA_K : TOP_K;
@@ -594,7 +738,12 @@ function retrieve(queryVec, message) {
       (chunkSet.has(hit.index)
         ? [`inhaltlich ähnliche Passage in ${chunk.kind === "volltext" ? "der Transkription" : "der Erläuterung"} (Embedding)`]
         : ["inhaltlich ähnlich (Embedding)"]);
-    hit.specificity = (matchCount.get(hit.index) || 0) + (personIndices.includes(hit.index) ? 1 : 0);
+    // Curated tag matches outrank regest-text matches: with CONTEXT_MAX
+    // letters in the prompt, the editors' judgement goes first.
+    hit.specificity =
+      2 * (matchCount.get(hit.index) || 0) +
+      (personIndices.includes(hit.index) ? 2 : 0) +
+      (regest.indices.includes(hit.index) ? 1 : 0);
     hits.push(hit);
   }
 
@@ -617,6 +766,8 @@ function retrieve(queryVec, message) {
     persons,
     years,
     briefIdRefs: briefIds.refs,
+    regestTerms: regest.terms,
+    droppedRegestTerms: regest.droppedTerms,
     keywordMatches: keyword.size,
     chunkMatches: chunkIndices.length,
     belowFloor,
@@ -694,6 +845,7 @@ STRIKTE REGELN:
 3. Nur wenn KEIN bereitgestellter Brief ein zur Frage passendes Treffer-Schlagwort trägt UND auch kein Regest die Frage beantwortet, sage klar: "Die vorliegenden Briefe enthalten dazu keine Informationen." Trägt auch nur ein Brief ein passendes Treffer-Schlagwort, dann IST dieser Brief die Antwort: Beginne mit ihm, nicht mit einer Verneinung. Du darfst anmerken, dass das Regest den Begriff nicht wörtlich nennt.
 4. Unterscheide zwischen dem, was ein Brief explizit sagt (Regest), und Briefen, die nur Metadaten haben — kennzeichne letztere als "(nur Metadaten, kein Regest vorhanden)".
 5. Fasse dich kurz und präzise. Keine Spekulationen, keine Hintergrundinformationen aus deinem eigenen Wissen.
+5a. Dein Einleitungssatz darf der Liste nicht widersprechen: Wenn du Briefe aufführst, die etwas erwähnen, beginne nicht mit "Keiner der Briefe erwähnt …". Einschränkungen und Zweifel gehören HINTER die Liste, nicht davor.
 6. Wenn ein Brief als automatisch generierte Zusammenfassung markiert ist, weise darauf hin.
 7. Fragen der Form "Welche Briefe ..." (erwähnen X / schrieb X an Y / stammen aus Jahr Z) sind Aufzählungsfragen: Die bereitgestellten Briefe SIND das Suchergebnis aus dem gesamten Archiv. Liste sie VOLLSTÄNDIG auf (jeden passenden Brief, keine Auswahl, keine Kürzung — bei vielen Treffern eine kompakte Zeile pro Brief: Nummer, Absender, Empfänger, Datum, Kurzinhalt) — auch wenn zu einem Brief nur Metadaten vorliegen. Verweigere solche Fragen NICHT. Bei "X an Y" achte auf die Richtung: Absender X, Empfänger Y (siehe "Von:"/"An:"); Briefe der Gegenrichtung ggf. getrennt als solche kennzeichnen.
 7b. Die Zeile "Treffer" nennt, warum ein Brief im Suchergebnis steht; "Treffer-Schlagwort" ist das Schlagwort, das zur Frage passt. Ein Brief mit Treffer-Schlagwort behandelt das gefragte Thema laut Editoren — führe ihn auf, auch wenn das Regest den Begriff nicht wörtlich nennt. Nennt die Frage einen speziellen Aspekt (z.B. "Frage 60"), dann prüfe JEDEN Brief auf ein Treffer-Schlagwort mit genau diesem Aspekt und führe diese Briefe zuerst und ausdrücklich auf — sie stehen in der Liste vorne.
@@ -714,10 +866,18 @@ function extractCitedIds(answer) {
 // The model's own refusal phrasing (rule 3). Checked on the opening of the
 // answer only — a caveat later in the text is legitimate.
 function opensWithRefusal(answer) {
-  return /^\W*(die vorliegenden briefe enthalten dazu keine informationen|keiner der bereitgestellten briefe)/i.test(
+  // Also catches "Keine der Quellen erwähnt Genf …" openings that then go on
+  // to list a letter mentioning Genf — the contradiction the reviewer flagged.
+  return /^\W*(die vorliegenden briefe enthalten dazu keine informationen|kein(e|er)?\s+(der|des)?\s*(bereitgestellten|vorliegenden|quellen|brief))/i.test(
     answer.trim().slice(0, 160)
   );
 }
+
+// Retry instructions must not leak the retry into the answer: the model
+// otherwise opens with "Entschuldigung für den Fehler …" and the end user,
+// who never saw a first attempt, is left wondering what went wrong.
+const RETRY_STYLE =
+  " Antworte direkt und vollständig, ohne Bezug auf deine vorherige Antwort — keine Entschuldigung, keine Erwähnung einer Korrektur.";
 
 // Second deterministic guard, same shape as the citation guard: an answer
 // that opens with "no information" although letters backed by a curated
@@ -732,15 +892,27 @@ async function generateAnswer(question, context, allowedIds, evidenceIds = []) {
       content: `Quellenausschnitte:\n\n${context}\n\nFrage: ${question}`,
     },
   ];
-  const complete = async (msgs) => {
-    const completion = await deepseek.chat.completions.create({
-      model: CHAT_MODEL,
-      temperature: 0.3,
-      // Enumerations over 40+ letters were being cut off at ~25 entries.
-      max_tokens: 8192,
-      messages: msgs,
-    });
-    return completion.choices[0]?.message?.content ?? "";
+  const complete = async (msgs, attempt = 0) => {
+    try {
+      const completion = await deepseek.chat.completions.create({
+        model: CHAT_MODEL,
+        temperature: 0.3,
+        // Enumerations over 40+ letters were being cut off at ~25 entries.
+        max_tokens: 8192,
+        messages: msgs,
+      });
+      return completion.choices[0]?.message?.content ?? "";
+    } catch (err) {
+      // One backoff retry on transport-level failures (DNS blip, reset,
+      // 5xx) — the sort of error that resolves itself in seconds. Auth and
+      // 4xx errors are not retried.
+      const transient = !err?.status || err.status >= 500 || err.status === 429;
+      if (attempt < 1 && transient) {
+        await new Promise((r) => setTimeout(r, 2000));
+        return complete(msgs, attempt + 1);
+      }
+      throw err;
+    }
   };
 
   let answer = await complete(messages);
@@ -758,7 +930,8 @@ async function generateAnswer(question, context, allowedIds, evidenceIds = []) {
         content:
           `Deine Antwort nennt Brief-Nummern, die NICHT in den Quellenausschnitten vorkommen: ` +
           `${invented.join(", ")}. Formuliere die Antwort neu und nenne ausschließlich ` +
-          `Brief-Nummern, die in den Quellenausschnitten stehen. Erwähne keine anderen Nummern.`,
+          `Brief-Nummern, die in den Quellenausschnitten stehen. Erwähne keine anderen Nummern.` +
+          RETRY_STYLE,
       },
     ]);
   }
@@ -775,7 +948,8 @@ async function generateAnswer(question, context, allowedIds, evidenceIds = []) {
           `(siehe ihre Zeile "Treffer" / "Treffer-Schlagwort"): ${evidenceIds.slice(0, 20).join(", ")}` +
           `${evidenceIds.length > 20 ? " u. a." : ""}. Formuliere die Antwort neu: Beginne mit diesen Briefen als ` +
           `Antwort (Nummer, Absender, Empfänger, Datum, Inhalt laut Regest). Verwende NICHT die Formulierung ` +
-          `"keine Informationen". Du darfst anmerken, wenn ein Regest den Begriff nicht wörtlich nennt.`,
+          `"keine Informationen". Du darfst anmerken, wenn ein Regest den Begriff nicht wörtlich nennt.` +
+          RETRY_STYLE,
       },
     ]);
   }
@@ -796,13 +970,17 @@ app.post("/api/chat", async (req, res) => {
 
     const queryVec = await embedQuery(message);
     const retrieved = retrieve(queryVec, message);
-    const { subjects, matchedForms, droppedSubjects, persons, years, briefIdRefs, keywordMatches, chunkMatches, belowFloor } =
-      retrieved;
+    const {
+      subjects, matchedForms, droppedSubjects, persons, years, briefIdRefs,
+      regestTerms, droppedRegestTerms, keywordMatches, chunkMatches, belowFloor,
+    } = retrieved;
     const { hits, reranked, dropped: rerankDropped } = await applyRerank(message, retrieved.hits);
 
     // Nothing cleared the relevance floor: answering from an empty source list
     // would only invite invention, so say so instead of prompting the model.
-    let answer = "Zu dieser Frage findet sich im Archiv kein hinreichend relevanter Brief.";
+    let answer = retrieved.aggregate
+      ? AGGREGATE_ANSWER
+      : "Zu dieser Frage findet sich im Archiv kein hinreichend relevanter Brief.";
     let citationRetry = false;
     let refusalRetry = false;
     if (hits.length) {
@@ -841,6 +1019,8 @@ app.post("/api/chat", async (req, res) => {
         matchedPersons: persons,
         matchedYears: years,
         briefIdRefs,
+        regestTerms,
+        droppedRegestTerms,
         keywordMatches,
         chunkMatches,
         reranked,
@@ -895,7 +1075,7 @@ app.post("/api/retrieve", async (req, res) => {
     }
     const queryVec = await embedQuery(message);
     const retrieved = retrieve(queryVec, message);
-    const { subjects, droppedSubjects, persons, years, briefIdRefs, keywordMatches, chunkMatches, belowFloor } = retrieved;
+    const { subjects, droppedSubjects, persons, years, briefIdRefs, regestTerms, droppedRegestTerms, keywordMatches, chunkMatches, belowFloor } = retrieved;
     const { hits, reranked, dropped: rerankDropped } = await applyRerank(message, retrieved.hits);
     res.json({
       retrieval: {
@@ -904,6 +1084,8 @@ app.post("/api/retrieve", async (req, res) => {
         matchedPersons: persons,
         matchedYears: years,
         briefIdRefs,
+        regestTerms,
+        droppedRegestTerms,
         keywordMatches,
         chunkMatches,
         reranked,

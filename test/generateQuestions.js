@@ -13,7 +13,7 @@
 // question should legitimately enumerate), correspondent pairs with >= 3
 // public letters. Writes test/fixtures/generated_questions.json.
 
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -164,6 +164,57 @@ async function main() {
     });
   }
 
+  // --- content questions: gold from the regest TEXT, not from tags ----------
+  // Tag-derived gold is reachable by the keyword path by construction, so it
+  // cannot measure what the embedding and passage paths contribute. Here the
+  // answer key is "the regest mentions it"; the subset that ALSO carries a
+  // matching subject tag is recorded so the eval can report recall on the
+  // untagged remainder — the only letters where the fuzzy paths can earn
+  // credit. Terms chosen for clean regex behaviour (no "Brand" — matches
+  // Brandenburg — no "Sturm", a surname) and a meaningful untagged share.
+  const CONTENT_TERMS = [
+    { term: "Komet", regex: "Komet", text: "Welche Briefe erwähnen einen Kometen?" },
+    { term: "Hungersnot", regex: "Hungersnot", text: "Welche Briefe erwähnen eine Hungersnot?" },
+    { term: "Gicht", regex: "Gicht", text: "Welche Briefe erwähnen Gicht?" },
+    { term: "Traum", regex: "Tr[äa]um", text: "Welche Briefe erwähnen Träume?" },
+    { term: "Kälte", regex: "Kälte", text: "Welche Briefe erwähnen große Kälte?" },
+    { term: "Bibliothek", regex: "Bibliothek", text: "Welche Briefe erwähnen eine Bibliothek?" },
+    { term: "Fieber", regex: "Fieber", text: "Welche Briefe erwähnen Fieber?" },
+    { term: "Hexen", regex: "Hexe", text: "Welche Briefe erwähnen Hexen oder Hexerei?" },
+  ];
+  for (const c of CONTENT_TERMS) {
+    const re = new RegExp(c.regex, "i");
+    const docs = await briefs
+      .find({ "regest.text.v": re }, { projection: { ...projection, "schlagworte.sachen.v": 1 } })
+      .toArray();
+    const sacheIds = [
+      ...new Set(docs.flatMap((d) => (d.schlagworte?.sachen || []).map((s) => s?.v).filter(Boolean).map(String))),
+    ]
+      .filter((k) => /^[0-9a-f]{24}$/.test(k))
+      .map((k) => new ObjectId(k));
+    const matchingLabels = new Set(
+      (await db.collection("saches").find({ _id: { $in: sacheIds }, "short.v": re }, { projection: { _id: 1 } }).toArray()).map((l) => String(l._id))
+    );
+    const { offen, intern } = splitByVisibility(docs);
+    const taggedSet = new Set(
+      docs
+        .filter((d) => (d.schlagworte?.sachen || []).some((s) => s?.v && matchingLabels.has(String(s.v))))
+        .map((d) => d.short?.v)
+        .filter(Boolean)
+    );
+    questions.push({
+      id: `gen_inhalt_${c.term.toLowerCase().replace(/[^a-z]/g, "")}`,
+      template: "inhalt",
+      lang: "de",
+      text: c.text,
+      term: c.term,
+      offen,
+      intern,
+      tagged: offen.filter((id) => taggedSet.has(id)),
+      untagged: offen.filter((id) => !taggedSet.has(id)),
+    });
+  }
+
   await client.close();
 
   await mkdir(FIXTURES_DIR, { recursive: true });
@@ -177,7 +228,8 @@ async function main() {
   console.log(
     `Wrote ${questions.length} generated questions ` +
       `(${questions.filter((q) => q.template === "sache").length} subject, ` +
-      `${questions.filter((q) => q.template === "person").length} person) -> ${file}`
+      `${questions.filter((q) => q.template === "person").length} person, ` +
+      `${questions.filter((q) => q.template === "inhalt").length} content) -> ${file}`
   );
 }
 

@@ -1,4 +1,4 @@
-# ThBw RAG Chatbot — Prototype (Mayank's playground)
+# ThBw RAG Chatbot — Prototype
 
 A standalone, local-only RAG chatbot over the ThBw correspondence archive
 (early modern theologians' letters). Built entirely outside the original
@@ -44,37 +44,25 @@ local MongoDB `letters` database.
 4. `public/index.html` — minimal chat UI, renders the answer with clickable
    source cards linking back to the original archive record.
 
-## Hardware note (8GB MacBook Air) — hybrid local/cloud
+## Generation: hybrid local/cloud
 
-Generation moved from a local Ollama model to the DeepSeek API (`deepseek-chat`)
-to avoid running two loaded models at once on 8GB of unified memory. Embeddings
-(`bge-m3`) still run locally via Ollama — only the retrieved context and
-question are sent to DeepSeek for answer generation.
-
-- Set `DEEPSEEK_API_KEY` in `.env` (copy `.env.example`) before `npm start`.
-- Running MongoDB + Ollama's embedding model is still tight on 8GB of unified
-  memory — during the first embedding attempt, physical memory usage hit
-  ~7.5/8GB with active swap/compression, which is why throughput dropped
-  from ~10/s to ~4.6/s as it ran.
-- Consider stopping MongoDB (`brew services stop mongodb-community`) once
-  `data/corpus.jsonl` has been built — it's only needed for the corpus
-  build step, not for answering chat questions.
+Embeddings (`bge-m3`) and all retrieval run locally via Ollama; only the
+retrieved public letters and the question are sent to the DeepSeek API
+(`deepseek-chat`) for answer generation. Set `DEEPSEEK_API_KEY` in `.env`
+(copy `.env.example`). Generation failures (network, DNS) return a 503 that
+says search worked and generation did not.
 
 ## Setup
 
-Prerequisites (already done in this session): Ollama installed via
-Homebrew and running (`brew services start ollama`), models pulled:
-
-```
-ollama pull llama3.2:3b
-ollama pull bge-m3
-```
+Prerequisites: MongoDB with the restored `letters` database, Ollama running
+with `ollama pull bge-m3`, Node >= 20.12, and `uv` for the optional rerank
+sidecar.
 
 ```
 npm install
 cp .env.example .env    # then fill in DEEPSEEK_API_KEY=
-npm run build:corpus   # MongoDB -> data/corpus.jsonl (read-only) — already done
-npm run build:index    # data/corpus.jsonl -> data/embeddings.bin — NOT YET RUN, see below
+npm run build:corpus   # MongoDB -> data/corpus.jsonl + data/fulltext.jsonl (read-only)
+npm run build:index    # data/corpus.jsonl -> data/embeddings.bin (~30 min on an M1 Pro)
 npm start               # serves http://localhost:5055
 ```
 
@@ -106,6 +94,22 @@ sidecar, embedding-only extras are re-scored and those below `RERANK_MIN`
 keyword-backed hits are never touched. Closed-form questions (X an Y,
 a year, a letter id) skip the fuzzy paths entirely.
 
+## Retrieval paths (what answers a question)
+
+1. **Subject tags** — the editors' `Schlagworte`, plus their synonym rings and
+   comma-qualified variants; inflection-tolerant (crude German stemming, so
+   "Kometen" reaches the tag "Komet"). Generic tags carried by >150 letters
+   are dropped.
+2. **Correspondents / year / letter id** — deterministic filters. When one of
+   these answers the question ("X an Y", "aus dem Jahr 1563", "Brief 18494")
+   the fuzzy paths below are switched off.
+3. **Regest text** — stemmed inverted index over regests and editorial
+   commentary; several terms must form a phrase. This is what finds letters
+   whose regest mentions a thing the editors did not tag: on the content
+   questions in the eval it took recall on untagged letters from 1% to ~68%.
+4. **Embedding neighbours** and **transcription passages** — capped, floored,
+   reranked; supplements only.
+
 ## Evaluation
 
 `test/` contains the evaluation harness (see the question catalog in
@@ -113,7 +117,8 @@ a year, a letter id) skip the fuzzy paths entirely.
 `npm run build:gold` + `npm run build:questions` after every mongorestore,
 then `npm run eval` (retrieval-only, seconds, free) or `npm run eval:full`
 (end-to-end incl. DeepSeek; writes `test/review-latest.md` for human
-grading). Hard assertions: no `intern` letter in any result, no invented
+grading; `--repeat=3` reruns the handwritten questions and reports whether
+every generation-side check was stable across runs). Hard assertions: no `intern` letter in any result, no invented
 citations. Metrics are compared against `test/baseline.json` on every run.
 
 ## Known limitations
@@ -126,8 +131,7 @@ citations. Metrics are compared against `test/baseline.json` on every run.
   beyond this scale).
 - No auth/access control on the `intern` vs `offen` distinction — this is
   a single-user local prototype, not a deployable multi-user service.
-- Generation is no longer local: retrieved letter context (which can include
-  `intern`/internal-only records, per the scope note above) is sent to the
-  DeepSeek API for each question. Embeddings and retrieval stay on-machine;
-  only the final prompt + context leaves the Mac. Reconsider this if `intern`
-  records should never leave local infrastructure.
+- Generation is a cloud call: the retrieved *public* letters and the
+  question are sent to the DeepSeek API on every question. `intern` records
+  never reach retrieval (asserted by the eval harness on every run), but
+  they are present in cleartext in `data/corpus.jsonl` on disk.

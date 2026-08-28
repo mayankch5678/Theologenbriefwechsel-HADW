@@ -39,6 +39,11 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE_URL = process.env.EVAL_BASE_URL || "http://localhost:5055";
 const FULL = process.argv.includes("--full");
+// --repeat N (full mode): run the handwritten questions N times and report
+// whether every generation-side check came out identical each time. The
+// chat model runs at temperature 0.3, so a single green run proves less
+// than it looks; this is the cheap stability smoke test.
+const REPEAT = Math.max(1, Number((process.argv.find((a) => a.startsWith("--repeat=")) || "--repeat=1").split("=")[1]));
 const BASELINE_FILE = path.join(__dirname, "baseline.json");
 const RESULTS_FILE = path.join(__dirname, "results-latest.json");
 const REVIEW_FILE = path.join(__dirname, "review-latest.md");
@@ -98,6 +103,7 @@ const QUESTIONS = [
     id: "de_adv_stats",
     lang: "de",
     text: "Wie viele Briefe enthält das Archiv insgesamt?",
+    expectEmpty: true, // aggregate short-circuit: no retrieval, fixed refusal
     expectRefusal: true,
   },
   {
@@ -164,7 +170,7 @@ function detectLang(text) {
 // The refusal the server hardcodes plus the phrasings the system prompt tells
 // the model to use when the context does not answer the question.
 function looksLikeRefusal(answer) {
-  return /kein hinreichend relevanter Brief|keine Informationen|keine relevanten|stelle .*konkrete Frage|spezifische Frage|betrifft das gesamte Archiv|nicht beantwortet werden|nicht in den bereitgestellten|nicht enthalten/i.test(
+  return /kein hinreichend relevanter Brief|keine Informationen|keine relevanten|stelle .*konkrete Frage|spezifische Frage|betrifft das gesamte Archiv|nicht beantwortet werden|nicht in den bereitgestellten|nicht enthalten|Zählung oder Statistik/i.test(
     answer
   );
 }
@@ -199,6 +205,15 @@ async function evaluateQuestion(q, fixtures, hardFailures) {
     row.goldSize = gold.size;
     row.recall = gold.size ? correct / gold.size : 0;
     row.precision = ids.length ? correct / ids.length : 0;
+  }
+  // Content questions: recall on the gold letters that carry NO matching
+  // tag — the only place the embedding/passage paths can score, since the
+  // keyword path reaches tagged letters by construction.
+  if (q.untagged) {
+    const untagged = new Set(q.untagged);
+    const hit = ids.filter((id) => untagged.has(id)).length;
+    row.untaggedSize = untagged.size;
+    row.untaggedRecall = untagged.size ? hit / untagged.size : undefined;
   }
   if (q.mustInclude) {
     row.missing = q.mustInclude.filter((id) => !ids.includes(id));
@@ -345,8 +360,25 @@ async function main() {
     console.log(`  ${r.id.padEnd(28)} ${parts.join("  ")}`);
   }
 
-  // --- report: generated in aggregate ---------------------------------------
-  const gen = rows.filter((r) => r.generated && r.recall !== undefined);
+  // --- report: content questions (text-derived gold) -----------------------
+  const content = rows.filter((r) => r.untaggedRecall !== undefined || r.untaggedSize !== undefined);
+  if (content.length) {
+    console.log(`\n=== Content questions (${content.length}, gold = regest text, not tags) ===`);
+    for (const r of content) {
+      console.log(
+        `  ${r.id.padEnd(24)} recall=${pct(r.recall)} precision=${pct(r.precision)} (gold ${r.goldSize})  ` +
+          `untagged recall=${pct(r.untaggedRecall)} (${r.untaggedSize} untagged)  sources=${r.sources}`
+      );
+    }
+    const withU = content.filter((r) => r.untaggedRecall !== undefined);
+    if (withU.length) {
+      const meanU = withU.reduce((s, r) => s + r.untaggedRecall, 0) / withU.length;
+      console.log(`  mean untagged recall = ${pct(meanU)}  <- what the non-tag paths (regest text, embedding, passages) contribute`);
+    }
+  }
+
+  // --- report: generated in aggregate (subject + person templates) --------
+  const gen = rows.filter((r) => r.generated && r.recall !== undefined && r.untaggedSize === undefined);
   if (gen.length) {
     const mean = (k) => gen.reduce((s, r) => s + r[k], 0) / gen.length;
     console.log(`\n=== Generated questions (${gen.length}) ===`);
@@ -369,6 +401,23 @@ async function main() {
         console.log(`  ✗ false refusals (gold in sources, answer refused): ${falseRefusals.map((r) => r.id).join(", ")}`);
       }
     }
+  }
+
+  // --- stability smoke: rerun handwritten questions, compare check outcomes --
+  if (FULL && REPEAT > 1) {
+    console.log(`\n=== Stability: handwritten questions x${REPEAT} ===`);
+    const checks = (r) => JSON.stringify([r.langAligned, r.refused, r.mustCited, r.falseRefusal, r.pass, r.citedCount > 0]);
+    const flaky = [];
+    for (const q of QUESTIONS) {
+      const outcomes = new Set([checks(results.questions[q.id])]);
+      for (let i = 1; i < REPEAT; i++) {
+        const again = await evaluateQuestion(q, fixtures, hardFailures);
+        outcomes.add(checks(again));
+      }
+      if (outcomes.size > 1) flaky.push(q.id);
+    }
+    console.log(flaky.length ? `  ✗ FLAKY (checks differed between runs): ${flaky.join(", ")}` : `  all ${QUESTIONS.length} questions stable across ${REPEAT} runs`);
+    results.stability = { repeat: REPEAT, flaky };
   }
 
   // --- baseline comparison --------------------------------------------------

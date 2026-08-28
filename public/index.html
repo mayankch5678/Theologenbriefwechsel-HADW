@@ -256,12 +256,29 @@ form.addEventListener('submit', async (e) => {
   sendBtn.disabled = true;
 
   const statusMsg = el('div', 'msg bot');
-  const statusBubble = el('div', 'bubble status', 'Durchsuche Archiv und formuliere Antwort…');
+  const statusBubble = el('div', 'bubble status', 'Durchsuche Archiv…');
   statusMsg.appendChild(statusBubble);
   log.appendChild(statusMsg);
   log.scrollTop = log.scrollHeight;
 
   try {
+    // Two phases so the page never sits blank for 20 s: retrieval answers in
+    // about a second and tells the user what was found; generation follows.
+    try {
+      const pre = await fetch('/api/retrieve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      const found = await pre.json();
+      const n = found.sources ? found.sources.length : 0;
+      statusBubble.textContent = n
+        ? `${n} Brief${n === 1 ? '' : 'e'} gefunden – formuliere Antwort (DeepSeek, ca. 10–30 s)…`
+        : 'Kein passender Brief gefunden – formuliere Antwort…';
+    } catch (_) {
+      statusBubble.textContent = 'Durchsuche Archiv und formuliere Antwort…';
+    }
+
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
