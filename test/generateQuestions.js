@@ -125,21 +125,40 @@ async function main() {
     .toArray();
   const chosenPairs = sample(pairCounts, N_PAIRS, rand);
 
+  // Canonical names come in a bracketed variant when the editors inferred
+  // the person ("[Matthias Hafenreffer]") — same person, so the gold set
+  // must accept both spellings or it under-counts and the citation-recall
+  // metric falsely reports 0% on a correct answer.
+  // Brackets can wrap just the name inside a longer string
+  // ("[Johann Ulrich Pregitzer], Rektor"), so strip them everywhere and
+  // regenerate the plausible bracketed spellings for the lookup.
+  const core = (n) => n.replace(/[[\]]/g, "").replace(/\s+/g, " ").trim();
+  const variants = (n) => {
+    const c = core(n);
+    const [name, ...rest] = c.split(",");
+    const forms = [n, c, `[${c}]`];
+    if (rest.length) forms.push(`[${name.trim()}],${rest.join(",")}`);
+    return [...new Set(forms)];
+  };
   let pairSeq = 0;
   for (const p of chosenPairs) {
     const { s, r } = p._id;
     pairSeq++;
     const docs = await briefs
-      .find({ "verfasser.nameMitAmt.combi": s, "adressat.nameMitAmt.combi": r }, { projection })
+      .find(
+        { "verfasser.nameMitAmt.combi": { $in: variants(s) }, "adressat.nameMitAmt.combi": { $in: variants(r) } },
+        { projection }
+      )
       .toArray();
     const { offen, intern } = splitByVisibility(docs);
+    if (!offen.length) continue; // a question with an empty answer key tests nothing
     questions.push({
       id: `gen_person_${String(pairSeq).padStart(2, "0")}_${offen[0] || "x"}`,
       template: "person",
       lang: "de",
-      text: `Welche Briefe schrieb ${s} an ${r}?`,
-      sender: s,
-      recipient: r,
+      text: `Welche Briefe schrieb ${core(s)} an ${core(r)}?`,
+      sender: core(s),
+      recipient: core(r),
       offen,
       intern,
     });

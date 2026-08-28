@@ -257,7 +257,10 @@ function matchSubjects(query) {
   // survives is then size-capped (see MAX_SUBJECT_BUCKET).
   const subjects = [];
   const droppedSubjects = [];
-  const matched = new Set();
+  // record index -> number of distinct matched forms it carries. A letter
+  // matching both "heidelberger katechismus" and "frage 60" is a more
+  // specific answer than one matching only the base subject.
+  const matchCount = new Map();
   for (const c of candidates) {
     const covered = candidates.some(
       (o) => o.form !== c.form && ` ${o.form} `.includes(` ${c.form} `)
@@ -272,9 +275,9 @@ function matchSubjects(query) {
       continue;
     }
     subjects.push(c.form);
-    for (const i of c.bucket) matched.add(i);
+    for (const i of new Set(c.bucket)) matchCount.set(i, (matchCount.get(i) || 0) + 1);
   }
-  return { indices: [...matched], subjects, droppedSubjects };
+  return { indices: [...matchCount.keys()], subjects, droppedSubjects, matchCount };
 }
 
 // Matches one side (sender or recipient) of the person index against the
@@ -389,12 +392,25 @@ function retrieve(queryVec, message) {
     };
   }
 
-  const { indices, subjects, droppedSubjects } = matchSubjects(message);
+  const { indices, subjects, droppedSubjects, matchCount } = matchSubjects(message);
   const { indices: personIndices, persons } = matchPersons(message);
   const { indices: yearIndices, years } = matchYears(message);
   const ranked = rankByCosine(queryVec, publicIndices);
 
   const keyword = new Set([...indices, ...personIndices, ...yearIndices, ...briefIds.indices]);
+  // Why each letter is in the result — shown to the model, because a letter
+  // buried under 42 tags was denied to carry the asked-for tag at all.
+  const reasonByIndex = new Map();
+  const addReason = (list, reason) => {
+    for (const i of list) {
+      if (!reasonByIndex.has(i)) reasonByIndex.set(i, []);
+      reasonByIndex.get(i).push(reason);
+    }
+  };
+  addReason(indices, "Schlagwort passt zur Frage");
+  addReason(personIndices, "Absender/Empfänger passt zur Frage");
+  addReason(yearIndices, `Jahr ${years.join("/")} passt zur Frage`);
+  addReason(briefIds.indices, "Brief-Nummer in der Frage genannt");
   // With keyword evidence in hand the embedding path is a supplement, not
   // the main course — cap how many embedding-only extras it may add.
   const embedK = keyword.size ? EMBED_EXTRA_K : TOP_K;
@@ -415,12 +431,26 @@ function retrieve(queryVec, message) {
       belowFloor++;
       continue;
     }
+    hit.reasons = reasonByIndex.get(hit.index) || ["inhaltlich ähnlich (Embedding)"];
+    hit.specificity = (matchCount.get(hit.index) || 0) + (personIndices.includes(hit.index) ? 1 : 0);
     hits.push(hit);
   }
+
+  // Context order = evidence order. Letters backed by curated matches come
+  // before embedding-only extras, the most specifically matched first;
+  // cosine only breaks ties. Letter 25851 — the one letter tagged
+  // "…, Frage 60" — sat at position 55 of 57 by cosine and was overlooked
+  // by the model in favour of a blanket "none of these mention Frage 60".
+  hits.sort((a, b) => {
+    const ka = keyword.has(a.index) ? 1 : 0;
+    const kb = keyword.has(b.index) ? 1 : 0;
+    return kb - ka || b.specificity - a.specificity || b.score - a.score;
+  });
 
   return {
     hits,
     subjects,
+    matchedForms: new Set(subjects),
     droppedSubjects,
     persons,
     years,
@@ -430,9 +460,11 @@ function retrieve(queryVec, message) {
   };
 }
 
-function buildContext(hits) {
+const MAX_TAGS_IN_CONTEXT = 12;
+
+function buildContext(hits, matchedForms = new Set()) {
   return hits
-    .map(({ record: r }, i) => {
+    .map(({ record: r, reasons }, i) => {
       const n = i + 1;
       const who = [
         r.senders.length ? `Von: ${r.senders.join(", ")}` : null,
@@ -442,17 +474,32 @@ function buildContext(hits) {
       ]
         .filter(Boolean)
         .join(" | ");
+      const parts = [`[${n}] Brief ${r.id} (${r.url})`, who];
+      if (reasons?.length) parts.push(`Treffer: ${reasons.join("; ")}`);
+      // The editors' subject tags are why most letters are in the context at
+      // all — and a tag is assigned on the editors' reading of the manuscript,
+      // so the regest often never spells the subject out. The tags that
+      // matched the question go first and separately: buried among 42 tags,
+      // "Falsche Apostel" on letter 33960 and "Heidelberger Katechismus,
+      // Frage 60" on 25851 were both overlooked and denied by the model.
+      const tags = r.keywordSubjects || [];
+      const variants = r.subjectVariants || [];
+      const hitTags = [
+        ...tags.filter((t) => subjectForms(t).some((f) => matchedForms.has(f))),
+        ...variants.filter((v) => subjectForms(v).some((f) => matchedForms.has(f))),
+      ];
+      const otherTags = tags.filter((t) => !hitTags.includes(t));
+      if (hitTags.length) parts.push(`Treffer-Schlagwort (Grund für die Auswahl): ${hitTags.join("; ")}`);
+      if (otherTags.length) {
+        const shown = otherTags.slice(0, MAX_TAGS_IN_CONTEXT).join("; ");
+        const more =
+          otherTags.length > MAX_TAGS_IN_CONTEXT ? ` (+${otherTags.length - MAX_TAGS_IN_CONTEXT} weitere)` : "";
+        parts.push(`${hitTags.length ? "Weitere Schlagworte" : "Schlagworte (Editoren)"}: ${shown}${more}`);
+      }
+      if (r.incipit) parts.push(`Incipit: "${r.incipit}"`);
       // The synthetic flag finally reaches the model: prompt rule 6 asks it
       // to mark auto-generated summaries, which it could never do while the
       // context hid which regests were synthesised (handoff §6.5).
-      const parts = [`[${n}] Brief ${r.id} (${r.url})`, who];
-      // The editors' subject tags are why most letters are in the context at
-      // all — and a tag is assigned on the editors' reading of the manuscript,
-      // so the regest often never spells the subject out. Without this line
-      // the model saw 14 letters tagged "Unschuldsbeteuerung" and answered
-      // that none of them mention it.
-      if (r.keywordSubjects?.length) parts.push(`Schlagworte (Editoren): ${r.keywordSubjects.join("; ")}`);
-      if (r.incipit) parts.push(`Incipit: "${r.incipit}"`);
       parts.push(
         r.regestSynthetic
           ? `${r.regest}\n(Automatisch aus Metadaten generierte Zusammenfassung — kein editorisches Regest vorhanden.)`
@@ -477,11 +524,12 @@ const SYSTEM_PROMPT = `Du bist ein Assistent für das Briefarchiv der Theologenb
 STRIKTE REGELN:
 1. Antworte NUR auf Basis der unten bereitgestellten Briefe. Erfinde NICHTS.
 2. Jede Aussage MUSS mit einer Brief-ID belegt werden, z.B. [Brief 18495]. Nenne AUSSCHLIESSLICH Brief-IDs, die in den Quellenausschnitten vorkommen — erwähne keine anderen Nummern, auch nicht mit Einschränkung.
-3. Wenn die bereitgestellten Briefe eine Frage nicht beantworten können, sage klar: "Die vorliegenden Briefe enthalten dazu keine Informationen."
+3. Nur wenn KEIN bereitgestellter Brief ein zur Frage passendes Treffer-Schlagwort trägt UND auch kein Regest die Frage beantwortet, sage klar: "Die vorliegenden Briefe enthalten dazu keine Informationen." Trägt auch nur ein Brief ein passendes Treffer-Schlagwort, dann IST dieser Brief die Antwort: Beginne mit ihm, nicht mit einer Verneinung. Du darfst anmerken, dass das Regest den Begriff nicht wörtlich nennt.
 4. Unterscheide zwischen dem, was ein Brief explizit sagt (Regest), und Briefen, die nur Metadaten haben — kennzeichne letztere als "(nur Metadaten, kein Regest vorhanden)".
 5. Fasse dich kurz und präzise. Keine Spekulationen, keine Hintergrundinformationen aus deinem eigenen Wissen.
 6. Wenn ein Brief als automatisch generierte Zusammenfassung markiert ist, weise darauf hin.
-7. Fragen der Form "Welche Briefe ..." (erwähnen X / schrieb X an Y / stammen aus Jahr Z) sind Aufzählungsfragen: Die bereitgestellten Briefe SIND das Suchergebnis aus dem gesamten Archiv. Liste sie auf (Absender, Empfänger, Datum, Kurzinhalt) — auch wenn zu einem Brief nur Metadaten vorliegen. Verweigere solche Fragen NICHT.
+7. Fragen der Form "Welche Briefe ..." (erwähnen X / schrieb X an Y / stammen aus Jahr Z) sind Aufzählungsfragen: Die bereitgestellten Briefe SIND das Suchergebnis aus dem gesamten Archiv. Liste sie VOLLSTÄNDIG auf (jeden passenden Brief, keine Auswahl, keine Kürzung — bei vielen Treffern eine kompakte Zeile pro Brief: Nummer, Absender, Empfänger, Datum, Kurzinhalt) — auch wenn zu einem Brief nur Metadaten vorliegen. Verweigere solche Fragen NICHT. Bei "X an Y" achte auf die Richtung: Absender X, Empfänger Y (siehe "Von:"/"An:"); Briefe der Gegenrichtung ggf. getrennt als solche kennzeichnen.
+7b. Die Zeile "Treffer" nennt, warum ein Brief im Suchergebnis steht; "Treffer-Schlagwort" ist das Schlagwort, das zur Frage passt. Ein Brief mit Treffer-Schlagwort behandelt das gefragte Thema laut Editoren — führe ihn auf, auch wenn das Regest den Begriff nicht wörtlich nennt. Nennt die Frage einen speziellen Aspekt (z.B. "Frage 60"), dann prüfe JEDEN Brief auf ein Treffer-Schlagwort mit genau diesem Aspekt und führe diese Briefe zuerst und ausdrücklich auf — sie stehen in der Liste vorne.
 7a. Nur bei echter Zahlen-Statistik über das GESAMTE Archiv (z.B. "Wie viele Briefe gibt es insgesamt?", "Wer schrieb die meisten Briefe?") antworte: "Diese Frage betrifft das gesamte Archiv und kann aus den bereitgestellten Briefen nicht beantwortet werden."
 8. Wenn die Frage eine umfassende Zusammenfassung des ganzen Archivs oder eines ganzen Themengebiets verlangt, erkläre, dass du nur die bereitgestellten Briefe interpretieren kannst.
 9. Wenn nach einem Brief gefragt wird, der nicht in den bereitgestellten Quellen enthalten ist, sage das klar — tu niemals so, als hättest du ihn gelesen.
@@ -496,7 +544,20 @@ function extractCitedIds(answer) {
 // ids on metadata-only questions). This is a deterministic guard: validate
 // the citations, and on violation retry once with an explicit correction.
 // A scholarly answer citing a nonexistent source is worse than no answer.
-async function generateAnswer(question, context, allowedIds) {
+// The model's own refusal phrasing (rule 3). Checked on the opening of the
+// answer only — a caveat later in the text is legitimate.
+function opensWithRefusal(answer) {
+  return /^\W*(die vorliegenden briefe enthalten dazu keine informationen|keiner der bereitgestellten briefe)/i.test(
+    answer.trim().slice(0, 160)
+  );
+}
+
+// Second deterministic guard, same shape as the citation guard: an answer
+// that opens with "no information" although letters backed by a curated
+// match (subject tag / correspondent / year / id) were in the context is a
+// false refusal — observed on letter 25851 ("…, Frage 60") three prompt
+// revisions in a row. Retry once with the evidence named explicitly.
+async function generateAnswer(question, context, allowedIds, evidenceIds = []) {
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
     {
@@ -508,27 +569,50 @@ async function generateAnswer(question, context, allowedIds) {
     const completion = await deepseek.chat.completions.create({
       model: CHAT_MODEL,
       temperature: 0.3,
+      // Enumerations over 40+ letters were being cut off at ~25 entries.
+      max_tokens: 8192,
       messages: msgs,
     });
     return completion.choices[0]?.message?.content ?? "";
   };
 
   let answer = await complete(messages);
-  const invented = extractCitedIds(answer).filter((id) => !allowedIds.has(id));
-  if (!invented.length) return { answer, citationRetry: false };
+  let citationRetry = false;
+  let refusalRetry = false;
 
-  answer = await complete([
-    ...messages,
-    { role: "assistant", content: answer },
-    {
-      role: "user",
-      content:
-        `Deine Antwort nennt Brief-Nummern, die NICHT in den Quellenausschnitten vorkommen: ` +
-        `${invented.join(", ")}. Formuliere die Antwort neu und nenne ausschließlich ` +
-        `Brief-Nummern, die in den Quellenausschnitten stehen. Erwähne keine anderen Nummern.`,
-    },
-  ]);
-  return { answer, citationRetry: true };
+  const invented = extractCitedIds(answer).filter((id) => !allowedIds.has(id));
+  if (invented.length) {
+    citationRetry = true;
+    answer = await complete([
+      ...messages,
+      { role: "assistant", content: answer },
+      {
+        role: "user",
+        content:
+          `Deine Antwort nennt Brief-Nummern, die NICHT in den Quellenausschnitten vorkommen: ` +
+          `${invented.join(", ")}. Formuliere die Antwort neu und nenne ausschließlich ` +
+          `Brief-Nummern, die in den Quellenausschnitten stehen. Erwähne keine anderen Nummern.`,
+      },
+    ]);
+  }
+
+  if (evidenceIds.length && opensWithRefusal(answer)) {
+    refusalRetry = true;
+    answer = await complete([
+      ...messages,
+      { role: "assistant", content: answer },
+      {
+        role: "user",
+        content:
+          `Deine Antwort beginnt mit einer Verneinung, obwohl folgende Briefe laut Editoren zur Frage passen ` +
+          `(siehe ihre Zeile "Treffer" / "Treffer-Schlagwort"): ${evidenceIds.slice(0, 20).join(", ")}` +
+          `${evidenceIds.length > 20 ? " u. a." : ""}. Formuliere die Antwort neu: Beginne mit diesen Briefen als ` +
+          `Antwort (Nummer, Absender, Empfänger, Datum, Inhalt laut Regest). Verwende NICHT die Formulierung ` +
+          `"keine Informationen". Du darfst anmerken, wenn ein Regest den Begriff nicht wörtlich nennt.`,
+      },
+    ]);
+  }
+  return { answer, citationRetry, refusalRetry };
 }
 
 const app = express();
@@ -544,21 +628,26 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const queryVec = await embedQuery(message);
-    const { hits, subjects, droppedSubjects, persons, years, briefIdRefs, keywordMatches, belowFloor } =
+    const { hits, subjects, matchedForms, droppedSubjects, persons, years, briefIdRefs, keywordMatches, belowFloor } =
       retrieve(queryVec, message);
 
     // Nothing cleared the relevance floor: answering from an empty source list
     // would only invite invention, so say so instead of prompting the model.
     let answer = "Zu dieser Frage findet sich im Archiv kein hinreichend relevanter Brief.";
     let citationRetry = false;
+    let refusalRetry = false;
     if (hits.length) {
       // Every hit is cited back to the caller; only the prompt is trimmed.
       const allowedIds = new Set(hits.map((h) => String(h.record.id)));
+      const inContext = hits.slice(0, CONTEXT_MAX);
+      // Letters the curated indexes matched (not embedding-only extras).
+      const evidenceIds = inContext.filter((h) => h.specificity > 0 || h.reasons?.some((r) => !r.startsWith("inhaltlich"))).map((h) => String(h.record.id));
       try {
-        ({ answer, citationRetry } = await generateAnswer(
+        ({ answer, citationRetry, refusalRetry } = await generateAnswer(
           message,
-          buildContext(hits.slice(0, CONTEXT_MAX)),
-          allowedIds
+          buildContext(inContext, matchedForms),
+          allowedIds,
+          evidenceIds
         ));
       } catch (err) {
         // Retrieval succeeded; only the cloud generation step failed. Say so
@@ -590,6 +679,7 @@ app.post("/api/chat", async (req, res) => {
         matches: hits.length,
         inContext: Math.min(hits.length, CONTEXT_MAX),
         citationRetry,
+        refusalRetry,
       },
       // inContext marks what the model actually saw (the prompt is trimmed
       // to CONTEXT_MAX) — the UI must not present the rest as evidence for

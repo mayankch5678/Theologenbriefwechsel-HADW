@@ -234,15 +234,29 @@ async function evaluateQuestion(q, fixtures, hardFailures) {
     // letters the answer actually cites; a refusal despite gold letters in
     // the sources is the failure signature seen on "Unschuldsbeteuerung"
     // (letters tagged by the editors, regest never spelling the word out).
+    // The model can only cite what was in its prompt: the first `inContext`
+    // sources. Judge against the gold letters that were actually there — not
+    // min(gold, inContext), which assumes gold letters sit at the top of the
+    // list and produced a misleading 0% on a 261-source person question.
+    const inContextIds = new Set(ids.slice(0, data.retrieval?.inContext ?? ids.length));
+    const refused = looksLikeRefusal(data.answer);
     if (goldList && goldList.length) {
       const gold = new Set(goldList);
-      const citedGold = cited.filter((id) => gold.has(id)).length;
-      // The model can only cite what was in its prompt (CONTEXT_MAX letters),
-      // so a 384-letter gold set is judged against the 60 it actually saw.
-      const inContext = data.retrieval?.inContext ?? ids.length;
-      const reachable = Math.min(gold.size, inContext);
-      row.citationRecall = reachable ? citedGold / reachable : 0;
-      row.falseRefusal = row.recall > 0 && looksLikeRefusal(data.answer) && citedGold === 0;
+      const reachable = [...gold].filter((id) => inContextIds.has(id));
+      const citedGold = reachable.filter((id) => cited.includes(id)).length;
+      row.citationRecall = reachable.length ? citedGold / reachable.length : undefined;
+      row.falseRefusal = reachable.length > 0 && refused && citedGold === 0;
+    }
+    // mustInclude questions get the same generation-side scrutiny: letter
+    // 25851 was retrieved, in context, tagged with the asked-for subject —
+    // and the answer still said no letter mentions Frage 60. Retrieval ✓
+    // hid a generation ✗.
+    if (q.mustInclude) {
+      const reachable = q.mustInclude.filter((id) => inContextIds.has(id));
+      const citedMust = reachable.filter((id) => cited.includes(id));
+      row.mustCited = reachable.length > 0 && citedMust.length === reachable.length;
+      row.mustUncited = reachable.filter((id) => !cited.includes(id));
+      row.falseRefusal = reachable.length > 0 && refused && citedMust.length === 0;
     }
     // Kept for the review sheet, never for scoring.
     row.topSources = data.sources.slice(0, 10).map((s) => ({ id: s.id, long: s.long, score: s.score }));
@@ -270,8 +284,9 @@ function reviewSheet(rows, questions) {
     if (r.recall !== undefined) metrics.push(`Recall ${pct(r.recall)}, Precision ${pct(r.precision)} (Gold ${r.goldSize})`);
     if (r.found !== undefined) metrics.push(r.found ? "Pflicht-Brief gefunden" : `Pflicht-Brief FEHLT: ${r.missing.join(", ")}`);
     if (r.pass !== undefined) metrics.push(r.pass ? "korrekt leer" : `${r.sources} Quellen statt 0`);
-    if (r.citationRecall !== undefined) metrics.push(`zitiert ${pct(r.citationRecall)} der Gold-Briefe`);
-    if (r.falseRefusal) metrics.push("**FEHL-ABLEHNUNG** (Gold-Briefe vorhanden, Antwort verweigert)");
+    if (r.citationRecall !== undefined) metrics.push(`zitiert ${pct(r.citationRecall)} der Gold-Briefe im Kontext`);
+    if (r.mustCited !== undefined) metrics.push(r.mustCited ? "Pflicht-Brief zitiert" : `**Pflicht-Brief NICHT zitiert**: ${r.mustUncited.join(", ")}`);
+    if (r.falseRefusal) metrics.push("**FEHL-ABLEHNUNG** (Brief im Kontext, Antwort verweigert)");
     lines.push(
       `---`,
       ``,
@@ -324,7 +339,9 @@ async function main() {
     if (FULL && r.refused !== undefined) parts.push(r.refused ? "refused ✓" : "DID NOT REFUSE");
     if (FULL && r.echoedCitations) parts.push(`⚠ echoed refs: ${r.echoedCitations.join(",")}`);
     if (FULL && r.citationRecall !== undefined) parts.push(`cites ${pct(r.citationRecall)} of gold`);
-    if (FULL && r.falseRefusal) parts.push("✗ FALSE REFUSAL (gold in sources, answer refused)");
+    if (FULL && r.mustCited !== undefined)
+      parts.push(r.mustCited ? "must-include cited ✓" : `✗ MUST-INCLUDE NOT CITED: ${r.mustUncited.join(",")}`);
+    if (FULL && r.falseRefusal) parts.push("✗ FALSE REFUSAL (letter in context, answer refused)");
     console.log(`  ${r.id.padEnd(28)} ${parts.join("  ")}`);
   }
 
