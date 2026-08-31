@@ -64,6 +64,62 @@
   }
   aside.suggestions button:hover { border-color: var(--accent); color: var(--accent); }
   @media (max-width: 900px) { aside.suggestions { display: none; } }
+  /* Conversation outline: one entry per asked question, collapsed to tick
+     marks; expands on hover; click jumps to that question. */
+  nav.outline {
+    width: 30px;
+    flex-shrink: 0;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 18px 8px;
+    border-right: 1px solid var(--border);
+    transition: width 0.15s ease;
+    background: var(--bg);
+  }
+  nav.outline:hover { width: 250px; }
+  nav.outline .outline-title {
+    display: none;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 0 0 8px 2px;
+    white-space: nowrap;
+  }
+  nav.outline:hover .outline-title { display: block; }
+  nav.outline button.outline-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--ink);
+    padding: 5px 2px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+  nav.outline button.outline-entry .tick {
+    flex-shrink: 0;
+    width: 14px;
+    height: 2px;
+    background: var(--muted);
+    border-radius: 1px;
+  }
+  nav.outline button.outline-entry .olabel {
+    display: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--ink);
+  }
+  nav.outline:hover button.outline-entry .olabel { display: inline; }
+  nav.outline button.outline-entry:hover .tick { background: var(--accent); }
+  nav.outline button.outline-entry:hover .olabel { color: var(--accent); }
+  @media (max-width: 900px) { nav.outline { display: none; } }
   /* Markdown inside answer bubbles */
   .bubble p { margin: 0 0 0.6em; }
   .bubble p:last-child { margin-bottom: 0; }
@@ -189,6 +245,9 @@
   <button>Welche Briefe erwähnen die Pest?</button>
   <button>Welche Briefe erwähnen Gicht?</button>
 </aside>
+<nav class="outline" id="outline" aria-label="Gestellte Fragen">
+  <div class="outline-title">Gestellte Fragen</div>
+</nav>
 <div class="app">
   <header>
     <h1>ThBw Briefarchiv – Chatbot (Prototyp)</h1>
@@ -246,11 +305,24 @@ function renderMarkdown(md) {
   return out.join('');
 }
 
+const outline = document.getElementById('outline');
+
 function addUserMessage(text) {
   const msg = el('div', 'msg user');
   msg.appendChild(el('div', 'bubble', text));
   log.appendChild(msg);
   log.scrollTop = log.scrollHeight;
+  // Outline entry: tick when collapsed, question text on hover, click jumps
+  // back to this question (the answer follows right below it).
+  const entry = el('button', 'outline-entry');
+  entry.type = 'button';
+  entry.title = text;
+  entry.appendChild(el('span', 'tick'));
+  entry.appendChild(el('span', 'olabel', text));
+  entry.addEventListener('click', () => {
+    log.scrollTop = msg.offsetTop - log.offsetTop - 8;
+  });
+  outline.appendChild(entry);
 }
 
 // Only the letters that were actually in the model's context are shown as
