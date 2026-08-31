@@ -190,9 +190,12 @@ function personForms(name) {
   if (words.length > 1) forms.add(words[words.length - 1]);
   // Stemmed variants of every form so inflected questions still match.
   const out = [...forms].filter((f) => f.length >= MIN_SUBJECT_LEN);
+  // Stemmed variants need one extra char of length: at 4 chars the stem of
+  // the verb "Fasse" collided with the subject tag "Fass" (barrel) and put
+  // 19 barrel letters ahead of an explicitly requested letter.
   for (const f of out.slice()) {
     const st = stemPhrase(f);
-    if (st && st !== f && st.length >= MIN_SUBJECT_LEN) out.push(st);
+    if (st && st !== f && st.length >= MIN_SUBJECT_LEN + 1) out.push(st);
   }
   return [...new Set(out)];
 }
@@ -661,9 +664,18 @@ function retrieve(queryVec, message) {
     };
   }
 
-  const { indices, subjects, droppedSubjects, matchCount } = matchSubjects(message);
-  const { indices: personIndices, persons, exact: exactCorrespondence } = matchPersons(message);
-  const { indices: yearIndices, years } = matchYears(message);
+  // An explicitly referenced letter IS the answer: "Fasse den Brief 18494
+  // zusammen." must not union in whatever else the sentence words match
+  // (the verb "Fasse" stem-matched the tag "Fass" and 19 barrel letters
+  // outranked the requested one).
+  const idLookup = briefIds.indices.length > 0;
+  const { indices, subjects, droppedSubjects, matchCount } = idLookup
+    ? { indices: [], subjects: [], droppedSubjects: [], matchCount: new Map() }
+    : matchSubjects(message);
+  const { indices: personIndices, persons, exact: exactCorrespondence } = idLookup
+    ? { indices: [], persons: [], exact: false }
+    : matchPersons(message);
+  const { indices: yearIndices, years } = idLookup ? { indices: [], years: [] } : matchYears(message);
   const ranked = rankByCosine(queryVec, publicIndices);
 
   const keyword = new Set([...indices, ...personIndices, ...yearIndices, ...briefIds.indices]);
@@ -741,6 +753,7 @@ function retrieve(queryVec, message) {
     // Curated tag matches outrank regest-text matches: with CONTEXT_MAX
     // letters in the prompt, the editors' judgement goes first.
     hit.specificity =
+      (briefIds.indices.includes(hit.index) ? 100 : 0) +
       2 * (matchCount.get(hit.index) || 0) +
       (personIndices.includes(hit.index) ? 2 : 0) +
       (regest.indices.includes(hit.index) ? 1 : 0);

@@ -87,6 +87,17 @@ const QUESTIONS = [
     gold: "jahr_1563",
   },
   {
+    // Direct lookup: the id names the answer, nothing else may ride along.
+    // Regression for the demo-video finding where the verb "Fasse"
+    // stem-matched the subject tag "Fass" and 19 barrel letters outranked
+    // the requested letter (which came 20th of 20).
+    id: "de_lookup_18494",
+    lang: "de",
+    text: "Fasse den Brief 18494 zusammen.",
+    mustInclude: ["18494"],
+    maxSources: 1,
+  },
+  {
     // Single fact: Olevian sent Calvin/Beza the Latin translation of the
     // catechism — regest of 18495. The letter must be retrievable.
     id: "de_fact_latein",
@@ -222,6 +233,12 @@ async function evaluateQuestion(q, fixtures, hardFailures) {
   if (q.expectEmpty) {
     row.pass = ids.length === 0;
   }
+  // A direct lookup must return exactly the requested letter(s) — the
+  // "Fass"/"Fasse" collision put 19 barrel letters ahead of Brief 18494.
+  if (q.maxSources !== undefined) {
+    row.withinMax = ids.length <= q.maxSources;
+    row.maxSources = q.maxSources;
+  }
 
   // --- generation-side checks (full mode only) ------------------------------
   if (FULL && typeof data.answer === "string") {
@@ -349,6 +366,7 @@ async function main() {
     if (r.recall !== undefined) parts.push(`recall=${pct(r.recall)} precision=${pct(r.precision)} (gold ${r.goldSize})`);
     if (r.found !== undefined) parts.push(r.found ? "mustInclude ✓" : `MISSING ${r.missing.join(",")}`);
     if (r.pass !== undefined) parts.push(r.pass ? "empty ✓" : `expected 0 sources, got ${r.sources}`);
+    if (r.withinMax !== undefined) parts.push(r.withinMax ? `≤${r.maxSources} sources ✓` : `✗ ${r.sources} sources, max ${r.maxSources}`);
     if (FULL && r.langAligned !== undefined)
       parts.push(r.langAligned ? `lang ✓` : `LANG ${r.lang}->${r.answerLang}`);
     if (FULL && r.refused !== undefined) parts.push(r.refused ? "refused ✓" : "DID NOT REFUSE");
