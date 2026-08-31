@@ -17,3 +17,6 @@ rerank/.venv/
 
 # Local working notes (Chinese) — not for the shared repo.
 local-docs/
+
+# Demo recordings — too large for the repo, shared via heiBOX.
+Demo/
