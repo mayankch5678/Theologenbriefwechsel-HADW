@@ -374,7 +374,7 @@ form.addEventListener('submit', async (e) => {
       const found = await pre.json();
       const n = found.sources ? found.sources.length : 0;
       statusBubble.textContent = n
-        ? `${n} Brief${n === 1 ? '' : 'e'} gefunden – formuliere Antwort (DeepSeek, ca. 10–30 s)…`
+        ? `${n} Brief${n === 1 ? '' : 'e'} gefunden – formuliere Antwort (ca. 10–30 s)…`
         : 'Kein passender Brief gefunden – formuliere Antwort…';
     } catch (_) {
       statusBubble.textContent = 'Durchsuche Archiv und formuliere Antwort…';
