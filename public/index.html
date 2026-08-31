@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:," />
 <title>ThBw Briefarchiv – Chatbot (Prototyp)</title>
 <style>
   :root {
@@ -31,6 +32,45 @@
     flex-direction: column;
     height: 100vh;
   }
+  aside.suggestions {
+    width: 250px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    padding: 20px 14px;
+    overflow-y: auto;
+    height: 100vh;
+    box-sizing: border-box;
+  }
+  aside.suggestions h2 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  aside.suggestions button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    cursor: pointer;
+  }
+  aside.suggestions button:hover { border-color: var(--accent); color: var(--accent); }
+  @media (max-width: 900px) { aside.suggestions { display: none; } }
+  /* Markdown inside answer bubbles */
+  .bubble p { margin: 0 0 0.6em; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble ol, .bubble ul { margin: 0.3em 0 0.6em; padding-left: 1.4em; }
+  .bubble li { margin-bottom: 0.35em; }
+  .bubble a { color: var(--accent); }
+  .bubble code { background: #f2ede4; padding: 0 3px; border-radius: 3px; font-size: 0.85em; }
   header {
     padding: 20px 24px 14px;
     border-bottom: 1px solid var(--border);
@@ -136,6 +176,19 @@
 </style>
 </head>
 <body>
+<aside class="suggestions">
+  <h2>Beispielfragen</h2>
+  <button>Welche Briefe erwähnen den Heidelberger Katechismus?</button>
+  <button>Welche Briefe betreffen Frage 60 des Heidelberger Katechismus?</button>
+  <button>Welche Briefe schrieb Kaspar Olevian an Heinrich Bullinger?</button>
+  <button>Welche Briefe stammen aus dem Jahr 1563?</button>
+  <button>Fasse den Brief 18494 zusammen.</button>
+  <button>Welche Briefe erwähnen einen Kometen?</button>
+  <button>Welche Briefe erwähnen eine Bibliothek?</button>
+  <button>Wer schickte Calvin die lateinische Übersetzung des Heidelberger Katechismus?</button>
+  <button>Welche Briefe erwähnen die Pest?</button>
+  <button>Welche Briefe erwähnen Gicht?</button>
+</aside>
 <div class="app">
   <header>
     <h1>ThBw Briefarchiv – Chatbot (Prototyp)</h1>
@@ -160,6 +213,39 @@ function el(tag, cls, text) {
   return e;
 }
 
+// Minimal Markdown renderer for the answer bubbles — the model emits
+// **bold**, numbered/dashed lists and inline code. Escapes HTML first, so
+// nothing from the model is ever interpreted as markup. Brief numbers
+// become links to the archive record.
+function renderMarkdown(md) {
+  const esc = md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const inline = (s) => s
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/Brief (\d{3,6})(?!\d)/g, '<a href="https://thbw.hadw-bw.de/brief/$1" target="_blank" rel="noopener">Brief $1</a>');
+  const lines = esc.split('\n');
+  const out = [];
+  let list = null; // 'ol' | 'ul' | null
+  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const line of lines) {
+    const olm = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    const ulm = line.match(/^\s*[-•*]\s+(.*)$/);
+    if (olm) {
+      if (list !== 'ol') { closeList(); out.push('<ol>'); list = 'ol'; }
+      out.push(`<li>${inline(olm[1])}</li>`);
+    } else if (ulm) {
+      if (list !== 'ul') { closeList(); out.push('<ul>'); list = 'ul'; }
+      out.push(`<li>${inline(ulm[1])}</li>`);
+    } else {
+      closeList();
+      if (line.trim()) out.push(`<p>${inline(line)}</p>`);
+    }
+  }
+  closeList();
+  return out.join('');
+}
+
 function addUserMessage(text) {
   const msg = el('div', 'msg user');
   msg.appendChild(el('div', 'bubble', text));
@@ -173,7 +259,9 @@ function addUserMessage(text) {
 // the answer is based on.
 function addBotMessage(answer, sources) {
   const msg = el('div', 'msg bot');
-  msg.appendChild(el('div', 'bubble', answer));
+  const bubble = el('div', 'bubble');
+  bubble.innerHTML = renderMarkdown(answer);
+  msg.appendChild(bubble);
 
   const cited = (sources || []).filter((s) => s.inContext !== false);
   const extra = (sources || []).filter((s) => s.inContext === false);
@@ -189,7 +277,13 @@ function addBotMessage(answer, sources) {
   }
 
   log.appendChild(msg);
-  log.scrollTop = log.scrollHeight;
+  // Scroll to the TOP of the answer, not the bottom of the log: the reader
+  // starts at the answer and scrolls down into the source cards. Explicit
+  // container scroll after layout — scrollIntoView left the view stranded
+  // mid-list when the answer was taller than the viewport.
+  requestAnimationFrame(() => {
+    log.scrollTop = msg.offsetTop - log.offsetTop - 8;
+  });
 }
 
 function renderSourceList(sources) {
@@ -246,6 +340,13 @@ function renderSourceList(sources) {
     });
     return box;
 }
+
+document.querySelectorAll('aside.suggestions button').forEach((b) => {
+  b.addEventListener('click', () => {
+    input.value = b.textContent;
+    form.requestSubmit();
+  });
+});
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
