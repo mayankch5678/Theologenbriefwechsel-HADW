@@ -1111,6 +1111,43 @@ app.post("/api/retrieve", async (req, res) => {
   }
 });
 
+// The example questions shown in the UI sidebar — the eval question set,
+// grouped by the retrieval path that answers it. Read from the test
+// fixtures so the sidebar follows the eval set automatically; the small
+// curated list below covers the handwritten questions (defined in
+// test/eval.js) and stays useful when fixtures are absent.
+app.get("/api/questions", async (req, res) => {
+  const groups = [
+    {
+      title: "Demo & Kontrolle",
+      questions: [
+        "Welche Briefe erwähnen den Heidelberger Katechismus?",
+        "Welche Briefe betreffen Frage 60 des Heidelberger Katechismus?",
+        "Welche Briefe schrieb Kaspar Olevian an Heinrich Bullinger?",
+        "Welche Briefe stammen aus dem Jahr 1563?",
+        "Fasse den Brief 18494 zusammen.",
+        "Wer schickte Calvin die lateinische Übersetzung des Heidelberger Katechismus?",
+        "Wie viele Briefe enthält das Archiv insgesamt?",
+        "Fasse den Brief 99999 zusammen.",
+        "Was ist das beste Rezept für Pizza?",
+      ],
+    },
+  ];
+  try {
+    const gen = JSON.parse(
+      await readFile(path.join(__dirname, "..", "test", "fixtures", "generated_questions.json"), "utf8")
+    );
+    const byTemplate = { sache: [], person: [], inhalt: [] };
+    for (const q of gen.questions) byTemplate[q.template]?.push(q.text);
+    if (byTemplate.sache.length) groups.push({ title: "Themen (Schlagworte)", questions: byTemplate.sache });
+    if (byTemplate.person.length) groups.push({ title: "Personen (Absender → Empfänger)", questions: byTemplate.person });
+    if (byTemplate.inhalt.length) groups.push({ title: "Inhalt (Regest-Text)", questions: byTemplate.inhalt });
+  } catch {
+    /* fixtures not built — curated group alone */
+  }
+  res.json({ groups });
+});
+
 app.get("/api/health", (req, res) => {
   res.json({
     ok: true,

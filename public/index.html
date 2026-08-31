@@ -63,62 +63,66 @@
     cursor: pointer;
   }
   aside.suggestions button:hover { border-color: var(--accent); color: var(--accent); }
+  aside.suggestions details { margin-bottom: 10px; }
+  aside.suggestions summary {
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 8px;
+    user-select: none;
+  }
+  aside.suggestions summary:hover { color: var(--accent); }
   @media (max-width: 900px) { aside.suggestions { display: none; } }
-  /* Conversation outline: one entry per asked question, collapsed to tick
-     marks; expands on hover; click jumps to that question. */
+  /* Conversation outline: one tick per asked question. No border, no
+     expansion — hovering a tick pops a floating label next to it, clicking
+     jumps to that question. */
   nav.outline {
-    width: 30px;
+    width: 26px;
     flex-shrink: 0;
     height: 100vh;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 18px 8px;
-    border-right: 1px solid var(--border);
-    transition: width 0.15s ease;
-    background: var(--bg);
+    padding: 18px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
   }
-  nav.outline:hover { width: 250px; }
-  nav.outline .outline-title {
-    display: none;
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--muted);
-    margin: 0 0 8px 2px;
-    white-space: nowrap;
-  }
-  nav.outline:hover .outline-title { display: block; }
   nav.outline button.outline-entry {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
     width: 100%;
     background: none;
     border: none;
-    color: var(--ink);
-    padding: 5px 2px;
-    font-size: 0.78rem;
-    font-family: inherit;
+    padding: 5px 0;
     cursor: pointer;
-    text-align: left;
   }
   nav.outline button.outline-entry .tick {
-    flex-shrink: 0;
     width: 14px;
     height: 2px;
     background: var(--muted);
     border-radius: 1px;
   }
-  nav.outline button.outline-entry .olabel {
+  nav.outline button.outline-entry:hover .tick { background: var(--accent); height: 3px; }
+  #outline-tip {
+    position: fixed;
     display: none;
+    z-index: 50;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(43,38,32,0.12);
+    padding: 7px 12px;
+    font-size: 0.82rem;
+    color: var(--ink);
+    max-width: 360px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--ink);
+    pointer-events: none;
   }
-  nav.outline:hover button.outline-entry .olabel { display: inline; }
-  nav.outline button.outline-entry:hover .tick { background: var(--accent); }
-  nav.outline button.outline-entry:hover .olabel { color: var(--accent); }
   @media (max-width: 900px) { nav.outline { display: none; } }
   /* Markdown inside answer bubbles */
   .bubble p { margin: 0 0 0.6em; }
@@ -232,21 +236,10 @@
 </style>
 </head>
 <body>
-<aside class="suggestions">
+<aside class="suggestions" id="suggestions">
   <h2>Beispielfragen</h2>
-  <button>Welche Briefe erwähnen den Heidelberger Katechismus?</button>
-  <button>Welche Briefe betreffen Frage 60 des Heidelberger Katechismus?</button>
-  <button>Welche Briefe schrieb Kaspar Olevian an Heinrich Bullinger?</button>
-  <button>Welche Briefe stammen aus dem Jahr 1563?</button>
-  <button>Fasse den Brief 18494 zusammen.</button>
-  <button>Welche Briefe erwähnen einen Kometen?</button>
-  <button>Welche Briefe erwähnen eine Bibliothek?</button>
-  <button>Wer schickte Calvin die lateinische Übersetzung des Heidelberger Katechismus?</button>
-  <button>Welche Briefe erwähnen die Pest?</button>
-  <button>Welche Briefe erwähnen Gicht?</button>
 </aside>
 <nav class="outline" id="outline" aria-label="Gestellte Fragen">
-  <div class="outline-title">Gestellte Fragen</div>
 </nav>
 <div class="app">
   <header>
@@ -254,6 +247,7 @@
     <p>Suche läuft lokal (Ollama), Antwortgenerierung über die DeepSeek-API (Cloud). Jede Antwort ist mit den zugrunde liegenden Briefen belegt — folgen Sie den Links zum Originaleintrag, um sie gegenzuprüfen.</p>
   </header>
   <div id="log"></div>
+  <div id="outline-tip"></div>
   <form id="form">
     <input id="input" type="text" placeholder="Frage zum Briefarchiv stellen…" autocomplete="off" />
     <button id="send" type="submit">Senden</button>
@@ -306,6 +300,7 @@ function renderMarkdown(md) {
 }
 
 const outline = document.getElementById('outline');
+const outlineTip = document.getElementById('outline-tip');
 
 function addUserMessage(text) {
   const msg = el('div', 'msg user');
@@ -316,12 +311,20 @@ function addUserMessage(text) {
   // back to this question (the answer follows right below it).
   const entry = el('button', 'outline-entry');
   entry.type = 'button';
-  entry.title = text;
   entry.appendChild(el('span', 'tick'));
-  entry.appendChild(el('span', 'olabel', text));
   entry.addEventListener('click', () => {
     log.scrollTop = msg.offsetTop - log.offsetTop - 8;
   });
+  // Floating label next to the tick (position:fixed escapes the narrow
+  // scrolling column, which would clip an absolutely positioned tooltip).
+  entry.addEventListener('mouseenter', () => {
+    const r = entry.getBoundingClientRect();
+    outlineTip.textContent = text;
+    outlineTip.style.left = (r.right + 10) + 'px';
+    outlineTip.style.top = r.top + 'px';
+    outlineTip.style.display = 'block';
+  });
+  entry.addEventListener('mouseleave', () => { outlineTip.style.display = 'none'; });
   outline.appendChild(entry);
 }
 
@@ -413,12 +416,34 @@ function renderSourceList(sources) {
     return box;
 }
 
-document.querySelectorAll('aside.suggestions button').forEach((b) => {
-  b.addEventListener('click', () => {
-    input.value = b.textContent;
-    form.requestSubmit();
-  });
-});
+// The sidebar shows the full evaluation question set, grouped by the
+// retrieval path that answers it, served by the API so it always matches
+// the current eval fixtures. First group open, the rest collapsed.
+(async () => {
+  const box = document.getElementById('suggestions');
+  try {
+    const res = await fetch('/api/questions');
+    const { groups } = await res.json();
+    groups.forEach((g, gi) => {
+      const det = document.createElement('details');
+      if (gi === 0) det.open = true;
+      const sum = el('summary', null, `${g.title} (${g.questions.length})`);
+      det.appendChild(sum);
+      for (const q of g.questions) {
+        const b = el('button', null, q);
+        b.type = 'button';
+        b.addEventListener('click', () => {
+          input.value = q;
+          form.requestSubmit();
+        });
+        det.appendChild(b);
+      }
+      box.appendChild(det);
+    });
+  } catch (e) {
+    box.appendChild(el('p', 'status', 'Beispielfragen konnten nicht geladen werden.'));
+  }
+})();
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
