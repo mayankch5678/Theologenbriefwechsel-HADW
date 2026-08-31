@@ -18,5 +18,6 @@ rerank/.venv/
 # Local working notes (Chinese) — not for the shared repo.
 local-docs/
 
-# Demo recordings — too large for the repo, shared via heiBOX.
-Demo/
+# Raw demo recordings stay local; the compressed cut is committed.
+Demo/*
+!Demo/demo-2026-08-31.mp4
