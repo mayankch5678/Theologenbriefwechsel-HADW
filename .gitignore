@@ -14,3 +14,6 @@ data/chunk_embeddings.bin
 test/results-latest.json
 test/review-latest.md
 rerank/.venv/
+
+# Local working notes (Chinese) — not for the shared repo.
+local-docs/
