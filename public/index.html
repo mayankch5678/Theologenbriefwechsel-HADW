@@ -445,10 +445,15 @@ function renderSourceList(sources) {
   }
 })();
 
+// Prior turns are sent with each question so the server can resolve
+// follow-ups ("davon", "der zweite Brief") before retrieval.
+const chatHistory = [];
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
+  const historyPayload = chatHistory.slice(-6);
   addUserMessage(text);
   input.value = '';
   sendBtn.disabled = true;
@@ -462,25 +467,31 @@ form.addEventListener('submit', async (e) => {
   try {
     // Two phases so the page never sits blank for 20 s: retrieval answers in
     // about a second and tells the user what was found; generation follows.
-    try {
-      const pre = await fetch('/api/retrieve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
-      });
-      const found = await pre.json();
-      const n = found.sources ? found.sources.length : 0;
-      statusBubble.textContent = n
-        ? `${n} Brief${n === 1 ? '' : 'e'} gefunden – formuliere Antwort (ca. 10–30 s)…`
-        : 'Kein passender Brief gefunden – formuliere Antwort…';
-    } catch (_) {
-      statusBubble.textContent = 'Durchsuche Archiv und formuliere Antwort…';
+    // On follow-up questions the raw text is not what will be searched (the
+    // server rewrites it first), so the preview count would mislead — skip it.
+    if (historyPayload.length === 0) {
+      try {
+        const pre = await fetch('/api/retrieve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text }),
+        });
+        const found = await pre.json();
+        const n = found.sources ? found.sources.length : 0;
+        statusBubble.textContent = n
+          ? `${n} Brief${n === 1 ? '' : 'e'} gefunden – formuliere Antwort (ca. 10–30 s)…`
+          : 'Kein passender Brief gefunden – formuliere Antwort…';
+      } catch (_) {
+        statusBubble.textContent = 'Durchsuche Archiv und formuliere Antwort…';
+      }
+    } else {
+      statusBubble.textContent = 'Durchsuche Archiv und formuliere Antwort (ca. 10–30 s)…';
     }
 
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: text, history: historyPayload }),
     });
     const data = await res.json();
     log.removeChild(statusMsg);
@@ -488,6 +499,7 @@ form.addEventListener('submit', async (e) => {
       addBotMessage('Fehler: ' + (data.error || res.statusText), []);
     } else {
       addBotMessage(data.answer, data.sources);
+      chatHistory.push({ role: 'user', content: text }, { role: 'assistant', content: data.answer });
     }
   } catch (err) {
     log.removeChild(statusMsg);

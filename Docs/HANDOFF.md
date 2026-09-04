@@ -112,6 +112,24 @@ existed; at position 1 it answers correctly.
 
 ---
 
+### Follow-up questions (multi-turn)
+
+Both `POST /api/chat` and `POST /api/retrieve` accept an optional
+`history` array (`[{role: "user"|"assistant", content}]`, last 3 pairs
+kept, entries clipped to 700 chars). When history is present, the
+question is first rewritten into a self-contained one by the chat model
+("Welche davon stammen von Erastus?" becomes "Welche Briefe, die einen
+Kometen erwähnen, stammen von Thomas Erastus?"), and retrieval runs on
+the rewrite; the response reports it as `retrieval.rewrittenQuery`.
+Every failure path (API error, multi-line or over-long output) falls
+back to the original question, so a lost rewrite can only cost quality,
+never availability. Generation sees the same history, and the citation
+guard still binds answers to the *current* sources only. Without
+`history` the behaviour is byte-for-byte the old single-turn pipeline —
+the eval baseline is unaffected. The web UI sends its transcript
+automatically; on follow-ups it skips the "N Briefe gefunden" preview
+(the raw text is not what will be searched, so the count would mislead).
+
 ## 3. The evaluation harness (test/)
 
 **This is the main deliverable.** Nothing in §2 was changed without it.

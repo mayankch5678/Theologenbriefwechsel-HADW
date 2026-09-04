@@ -887,6 +887,65 @@ function opensWithRefusal(answer) {
 }
 
 // Retry instructions must not leak the retry into the answer: the model
+// Follow-up questions ("Und was schrieb er 1563?") carry pronouns and
+// references the retrieval indexes cannot resolve. When the client sends
+// conversation history, the question is first rewritten into a
+// self-contained one and retrieval runs on the rewrite. Every failure path
+// falls back to the original question, so a lost rewrite can only cost
+// quality, never availability.
+const HISTORY_MAX_TURNS = 3; // question/answer pairs kept from the client
+const HISTORY_SNIPPET = 700; // chars per history entry handed to the model
+
+function sanitizeHistory(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (t) =>
+        t &&
+        (t.role === "user" || t.role === "assistant") &&
+        typeof t.content === "string" &&
+        t.content.trim()
+    )
+    .slice(-2 * HISTORY_MAX_TURNS)
+    .map((t) => ({ role: t.role, content: t.content.slice(0, HISTORY_SNIPPET) }));
+}
+
+async function rewriteQuestion(question, history) {
+  const transcript = history
+    .map((t) => `${t.role === "assistant" ? "Antwort" : "Frage"}: ${t.content}`)
+    .join("\n");
+  try {
+    const completion = await deepseek.chat.completions.create({
+      model: CHAT_MODEL,
+      temperature: 0,
+      max_tokens: 200,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Du formulierst die letzte Frage eines Gesprächs als eigenständige Suchanfrage um. " +
+            "Ersetze Pronomen und Verweise (er, sie, davon, diese Briefe, der zweite …) durch die " +
+            "konkreten Namen, Brief-Nummern oder Begriffe aus dem Gesprächsverlauf. Ändere sonst " +
+            "nichts: keine neuen Themen, keine Antwort, keine Erklärung. Ist die letzte Frage " +
+            "bereits eigenständig, gib sie unverändert zurück. Gib NUR die Frage aus.",
+        },
+        {
+          role: "user",
+          content: `Gesprächsverlauf:\n${transcript}\n\nLetzte Frage: ${question}`,
+        },
+      ],
+    });
+    const out = (completion.choices[0]?.message?.content ?? "").trim();
+    // Deterministic sanity floor: a usable rewrite is one line, non-empty
+    // and not an essay — anything else means the model answered instead of
+    // rewriting, and the original question is the safer query.
+    if (!out || out.includes("\n") || out.length > 400) return null;
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 // otherwise opens with "Entschuldigung für den Fehler …" and the end user,
 // who never saw a first attempt, is left wondering what went wrong.
 const RETRY_STYLE =
@@ -897,9 +956,13 @@ const RETRY_STYLE =
 // match (subject tag / correspondent / year / id) were in the context is a
 // false refusal — observed on letter 25851 ("…, Frage 60") three prompt
 // revisions in a row. Retry once with the evidence named explicitly.
-async function generateAnswer(question, context, allowedIds, evidenceIds = []) {
+async function generateAnswer(question, context, allowedIds, evidenceIds = [], history = []) {
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
+    // Prior turns come before the sources so follow-up phrasings ("davon",
+    // "der zweite Brief") resolve; the citation guard below still holds the
+    // answer to the CURRENT sources only.
+    ...history,
     {
       role: "user",
       content: `Quellenausschnitte:\n\n${context}\n\nFrage: ${question}`,
@@ -976,18 +1039,25 @@ app.use(express.static(PUBLIC_DIR));
 
 app.post("/api/chat", async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, history: rawHistory } = req.body;
     if (!message || typeof message !== "string") {
       return res.status(400).json({ error: "Missing 'message' string in request body." });
     }
 
-    const queryVec = await embedQuery(message);
-    const retrieved = retrieve(queryVec, message);
+    const history = sanitizeHistory(rawHistory);
+    let searchQuery = message;
+    if (history.length) {
+      const rewritten = await rewriteQuestion(message, history);
+      if (rewritten) searchQuery = rewritten;
+    }
+
+    const queryVec = await embedQuery(searchQuery);
+    const retrieved = retrieve(queryVec, searchQuery);
     const {
       subjects, matchedForms, droppedSubjects, persons, years, briefIdRefs,
       regestTerms, droppedRegestTerms, keywordMatches, chunkMatches, belowFloor,
     } = retrieved;
-    const { hits, reranked, dropped: rerankDropped } = await applyRerank(message, retrieved.hits);
+    const { hits, reranked, dropped: rerankDropped } = await applyRerank(searchQuery, retrieved.hits);
 
     // Nothing cleared the relevance floor: answering from an empty source list
     // would only invite invention, so say so instead of prompting the model.
@@ -1007,7 +1077,8 @@ app.post("/api/chat", async (req, res) => {
           message,
           buildContext(inContext, matchedForms),
           allowedIds,
-          evidenceIds
+          evidenceIds,
+          history
         ));
       } catch (err) {
         // Retrieval succeeded; only the cloud generation step failed. Say so
@@ -1045,6 +1116,7 @@ app.post("/api/chat", async (req, res) => {
         inContext: Math.min(hits.length, CONTEXT_MAX),
         citationRetry,
         refusalRetry,
+        rewrittenQuery: searchQuery === message ? undefined : searchQuery,
       },
       // inContext marks what the model actually saw (the prompt is trimmed
       // to CONTEXT_MAX) — the UI must not present the rest as evidence for
@@ -1082,14 +1154,22 @@ app.post("/api/chat", async (req, res) => {
 // latency and nondeterminism of a chat-model call. Not used by the UI.
 app.post("/api/retrieve", async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, history: rawHistory } = req.body;
     if (!message || typeof message !== "string") {
       return res.status(400).json({ error: "Missing 'message' string in request body." });
     }
-    const queryVec = await embedQuery(message);
-    const retrieved = retrieve(queryVec, message);
+    // Same follow-up handling as /api/chat, so this endpoint stays a
+    // faithful preview of the full pipeline.
+    const history = sanitizeHistory(rawHistory);
+    let searchQuery = message;
+    if (history.length) {
+      const rewritten = await rewriteQuestion(message, history);
+      if (rewritten) searchQuery = rewritten;
+    }
+    const queryVec = await embedQuery(searchQuery);
+    const retrieved = retrieve(queryVec, searchQuery);
     const { subjects, droppedSubjects, persons, years, briefIdRefs, regestTerms, droppedRegestTerms, keywordMatches, chunkMatches, belowFloor } = retrieved;
-    const { hits, reranked, dropped: rerankDropped } = await applyRerank(message, retrieved.hits);
+    const { hits, reranked, dropped: rerankDropped } = await applyRerank(searchQuery, retrieved.hits);
     res.json({
       retrieval: {
         matchedSubjects: subjects,
@@ -1108,6 +1188,7 @@ app.post("/api/retrieve", async (req, res) => {
         belowFloor,
         matches: hits.length,
         inContext: Math.min(hits.length, CONTEXT_MAX),
+        rewrittenQuery: searchQuery === message ? undefined : searchQuery,
       },
       sources: hits.map(({ record: r, score, reasons, rerank, chunkKind }) => ({
         id: r.id,
