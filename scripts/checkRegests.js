@@ -24,9 +24,12 @@ const ENV_FILE = path.join(__dirname, "..", ".env");
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const OUT = path.join(DATA_DIR, "regest-check.jsonl");
-const llm = createLlm();
+const llm = createLlm({ role: "batch" });
 const MODEL = llm.model;
-const CONCURRENCY = Number(process.env.CONCURRENCY || 8);
+// DeepSeek throttles by request count (~1 req/s sustained), so regests are
+// packed: one request carries BATCH regests and takes as long as one.
+const CONCURRENCY = Number(process.env.CONCURRENCY || 20);
+const BATCH = Number(process.env.BATCH || 10);
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split("=")[1];
 const LIMIT = Number(arg("limit") || 0);
 const HEURISTIC_ONLY = process.argv.includes("--heuristic-only");
@@ -37,7 +40,7 @@ Melde ausschließlich:
 - "unvollstaendig": ein Satz bricht ab oder ist grammatisch unvollständig (fehlendes Verb/Objekt, Satz endet mitten im Gedanken, Satz ohne Schlusspunkt am Ende des Regests).
 - "wortfehler": doppeltes Wort ("die die"), offensichtlich fehlendes Wort, falsche Wortstellung.
 - "tippfehler": eindeutiger Tippfehler in einem deutschen Wort (nicht: Namen, Latein, alte Schreibungen).
-Antworte NUR mit JSON: {"maengel":[{"art":"unvollstaendig"|"wortfehler"|"tippfehler","stelle":"<wörtliches Zitat, höchstens 12 Wörter>","hinweis":"<kurz>"}]}. Leere Liste, wenn nichts zu beanstanden ist. Im Zweifel nichts melden.`;
+Du erhältst mehrere Regesten, jedes mit seiner Brief-Nummer; prüfe jedes für sich. Antworte NUR mit JSON: {"briefe":[{"id":"<Brief-Nummer>","maengel":[{"art":"unvollstaendig"|"wortfehler"|"tippfehler","stelle":"<wörtliches Zitat, höchstens 12 Wörter>","hinweis":"<kurz>"}]}, …]} — genau ein Eintrag pro Brief-Nummer, leere Liste, wenn nichts zu beanstanden ist. Im Zweifel nichts melden.`;
 
 function heuristics(text) {
   const t = text.trim();
@@ -73,58 +76,79 @@ async function main() {
 
   const client = HEURISTIC_ONLY ? null : llm.client;
 
-  async function check(r) {
-    const heur = heuristics(r.regest);
-    let maengel = null;
-    let error;
-    if (client) {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const completion = await client.chat.completions.create({
-            ...llm.extra,
-            model: MODEL,
-            temperature: 0,
-            max_tokens: 500,
-            response_format: { type: "json_object" },
-            messages: [
-              { role: "system", content: SYSTEM },
-              { role: "user", content: `Regest zu Brief ${r.id}:\n\n${r.regest}` },
-            ],
-          });
-          const parsed = JSON.parse(completion.choices[0]?.message?.content || "{}");
-          maengel = Array.isArray(parsed.maengel) ? parsed.maengel.slice(0, 10) : [];
-          error = undefined;
-          break;
-        } catch (err) {
-          error = String(err?.message || err);
-          await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
+  // One request, several regests -> Map id -> maengel[] (missing ids are
+  // retried in a smaller batch by the caller).
+  async function checkMany(rs) {
+    if (!client) return new Map(rs.map((r) => [String(r.id), []]));
+    const user = rs.map((r) => `### Brief ${r.id}\n${r.regest}`).join("\n\n");
+    let lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const completion = await client.chat.completions.create({
+          ...llm.extra,
+          model: MODEL,
+          temperature: 0,
+          max_tokens: 250 * rs.length + 200,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: SYSTEM },
+            { role: "user", content: user },
+          ],
+        });
+        const parsed = JSON.parse(completion.choices[0]?.message?.content || "{}");
+        const out = new Map();
+        for (const b of Array.isArray(parsed.briefe) ? parsed.briefe : []) {
+          const id = String(b?.id ?? "").trim();
+          if (rs.some((r) => String(r.id) === id) && !out.has(id)) out.set(id, Array.isArray(b.maengel) ? b.maengel.slice(0, 10) : []);
         }
+        return out;
+      } catch (err) {
+        lastErr = err;
+        await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
       }
     }
-    return { id: String(r.id), heuristik: heur, maengel, error, model: client ? MODEL : null, at: new Date().toISOString() };
+    throw lastErr;
   }
 
-  let i = 0;
+  let n = 0;
   let flagged = 0;
   const started = Date.now();
-  const worker = async () => {
-    while (i < todo.length) {
-      const r = todo[i++];
-      const result = await check(r);
-      if (result.error && !result.maengel) {
-        console.error(`  ${r.id}: ${result.error}`);
-        continue; // not written: retried on the next run
-      }
-      if (result.heuristik.length || result.maengel?.length) flagged++;
-      await appendFile(OUT, JSON.stringify(result) + "\n");
-      const n = i;
-      if (n % 200 === 0 || n === todo.length) {
-        const rate = n / ((Date.now() - started) / 1000);
-        console.log(`  ${n}/${todo.length} (${flagged} flagged, ${rate.toFixed(1)}/s, ~${Math.round((todo.length - n) / rate / 60)} min left)`);
-      }
+  const groups = [];
+  for (let k = 0; k < todo.length; k += BATCH) groups.push(todo.slice(k, k + BATCH));
+  let g = 0;
+  const handle = async (rs) => {
+    let got;
+    try {
+      got = await checkMany(rs);
+    } catch (err) {
+      console.error(`  batch of ${rs.length}: ${String(err?.message || err)}`);
+      n += rs.length;
+      return; // not written: retried on the next run
+    }
+    const lines = [];
+    for (const r of rs) {
+      if (!got.has(String(r.id))) continue;
+      const result = { id: String(r.id), heuristik: heuristics(r.regest), maengel: got.get(String(r.id)), model: client ? MODEL : null, at: new Date().toISOString() };
+      if (result.heuristik.length || result.maengel.length) flagged++;
+      lines.push(JSON.stringify(result));
+    }
+    if (lines.length) await appendFile(OUT, lines.join("\n") + "\n");
+    n += lines.length;
+    const missing = rs.filter((r) => !got.has(String(r.id)));
+    if (missing.length && rs.length > 1) {
+      const half = Math.ceil(missing.length / 2);
+      await handle(missing.slice(0, half));
+      if (missing.length > half) await handle(missing.slice(half));
+    } else if (missing.length) n += missing.length;
+    if (Math.floor(n / 200) !== Math.floor((n - rs.length) / 200) || n >= todo.length) {
+      const rate = n / ((Date.now() - started) / 1000);
+      console.log(`  ${n}/${todo.length} (${flagged} flagged, ${rate.toFixed(1)}/s, ~${Math.round((todo.length - n) / rate / 60)} min left)`);
     }
   };
-  await Promise.all(Array.from({ length: client ? CONCURRENCY : 1 }, worker));
+  const worker = async () => {
+    while (g < groups.length) await handle(groups[g++]);
+  };
+  await Promise.all(Array.from({ length: client ? Math.min(CONCURRENCY, groups.length) : 1 }, worker));
   console.log(`Done. ${flagged} of ${todo.length} letters flagged. Results in ${OUT}`);
 }
 

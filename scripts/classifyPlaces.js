@@ -22,7 +22,7 @@ const ENV_FILE = path.join(__dirname, "..", ".env");
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const OUT = path.join(DATA_DIR, "places.json");
-const llm = createLlm();
+const llm = createLlm({ role: "batch" });
 const MODEL = llm.model;
 const BATCH = 40;
 const CONCURRENCY = Number(process.env.CONCURRENCY || 4);

@@ -18,6 +18,7 @@ import { readFile, appendFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { createClassifier } from "./classify.js";
+import { createLlm } from "./llm.js";
 
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS || 8);
 const TOOL_RESULT_MAX_CHARS = 32000; // hard cap per tool message
@@ -356,7 +357,8 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
 
   const clampInt = (v, def, max) => Math.max(0, Math.min(max, Number.isFinite(Number(v)) && v !== undefined ? Number(v) : def));
 
-  const classifier = createClassifier({ records, publicIndices, dataDir, client, model, extra, fieldValues });
+  const batch = createLlm({ role: "batch" });
+  const classifier = createClassifier({ records, publicIndices, dataDir, client: batch.client, model: batch.model, extra: batch.extra, fieldValues });
 
   // ---- tools -----------------------------------------------------------------
   const tools = {

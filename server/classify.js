@@ -26,7 +26,12 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 
 const SYNC_MAX = Number(process.env.CLASSIFY_SYNC_MAX || 300);
-const CONCURRENCY = Number(process.env.CLASSIFY_CONCURRENCY || 20);
+// DeepSeek throttles per account by REQUESTS, not tokens: the first ~50 calls
+// answer in ~1.7 s, sustained load queues every call for 30–60 s whatever the
+// concurrency (measured 2026-09-11: 1 req/s with 40 in flight). A request
+// with 10 regests takes as long as one with 1, so letters are packed.
+const CONCURRENCY = Number(process.env.CLASSIFY_CONCURRENCY || 40);
+const BATCH = Number(process.env.CLASSIFY_BATCH || 10);
 const REGEST_MAX_CHARS = 3000;
 const GROUPS_MAX = 40;
 const EXAMPLES_PER_LABEL = 3;
@@ -63,17 +68,25 @@ export function createClassifier({ records, publicIndices, dataDir, client, mode
       `Du liest das editorische Regest (Zusammenfassung der Editoren) eines Briefs aus dem Briefarchiv der Theologenbriefwechsel (Südwesten des Reichs, 1550–1620). ` +
       `Beurteile AUSSCHLIESSLICH anhand des Regest-Wortlauts — kein eigenes historisches Wissen, keine Vermutung über den Absender.\n\n` +
       `Kriterium: ${criterion}\n\nMögliche Labels:\n${list}\n\n` +
-      `Jedes Label außer "${NO_LABEL}" muss mit einem wörtlichen Zitat aus dem Regest belegt werden (höchstens 15 Wörter). ` +
+      `Jedes Label außer "${NO_LABEL}" muss mit einem wörtlichen Zitat aus dem jeweiligen Regest belegt werden (höchstens 15 Wörter). ` +
       `Ohne belegendes Zitat: "${NO_LABEL}". Im Zweifel "${NO_LABEL}".\n` +
-      `Antworte NUR mit JSON: {"label":"<Label>","zitat":"<wörtlich aus dem Regest oder leer>","begruendung":"<ein Satz>"}`
+      `Du erhältst mehrere Regesten, jedes mit seiner Brief-Nummer. Beurteile jedes für sich. ` +
+      `Antworte NUR mit JSON: {"ergebnisse":[{"id":"<Brief-Nummer>","label":"<Label>","zitat":"<wörtlich aus dem Regest oder leer>"}, …]} — genau ein Eintrag pro Brief-Nummer, keine weiteren Felder.`
     );
   }
 
-  async function classifyOne(r, system, allowed) {
-    const user =
-      `Brief ${r.id}: ${r.long}\n` +
-      (r.keywordSubjects?.length ? `Schlagworte der Editoren: ${r.keywordSubjects.slice(0, 15).join("; ")}\n` : "") +
-      `\nRegest:\n${r.regest.slice(0, REGEST_MAX_CHARS)}`;
+  // One request, several letters. Returns a Map id -> result for the letters
+  // the model answered; missing ones are retried by the caller in a smaller
+  // batch (a truncated JSON answer loses the tail, never the head).
+  async function classifyMany(rs, system, allowed) {
+    const user = rs
+      .map(
+        (r) =>
+          `### Brief ${r.id}: ${r.long}\n` +
+          (r.keywordSubjects?.length ? `Schlagworte der Editoren: ${r.keywordSubjects.slice(0, 12).join("; ")}\n` : "") +
+          `Regest: ${r.regest.slice(0, REGEST_MAX_CHARS)}`
+      )
+      .join("\n\n");
     let lastErr;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -81,7 +94,7 @@ export function createClassifier({ records, publicIndices, dataDir, client, mode
           ...extra,
           model,
           temperature: 0,
-          max_tokens: 400,
+          max_tokens: 90 * rs.length + 100,
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: system },
@@ -89,11 +102,17 @@ export function createClassifier({ records, publicIndices, dataDir, client, mode
           ],
         });
         const parsed = JSON.parse(completion.choices[0]?.message?.content || "{}");
-        let label = typeof parsed.label === "string" ? parsed.label.trim() : NO_LABEL;
-        if (!allowed.has(label)) label = NO_LABEL;
-        const zitat = typeof parsed.zitat === "string" ? parsed.zitat.trim().slice(0, 240) : "";
-        if (label !== NO_LABEL && !zitat) label = NO_LABEL;
-        return { id: String(r.id), label, zitat, begruendung: typeof parsed.begruendung === "string" ? parsed.begruendung.slice(0, 300) : "" };
+        const out = new Map();
+        for (const e of Array.isArray(parsed.ergebnisse) ? parsed.ergebnisse : []) {
+          const id = String(e?.id ?? "").trim();
+          if (!rs.some((r) => String(r.id) === id) || out.has(id)) continue;
+          let label = typeof e.label === "string" ? e.label.trim() : NO_LABEL;
+          if (!allowed.has(label)) label = NO_LABEL;
+          const zitat = typeof e.zitat === "string" ? e.zitat.trim().slice(0, 240) : "";
+          if (label !== NO_LABEL && !zitat) label = NO_LABEL;
+          out.set(id, { id, label, zitat, begruendung: typeof e.begruendung === "string" ? e.begruendung.slice(0, 300) : "" });
+        }
+        return out;
       } catch (err) {
         lastErr = err;
         const wait = err?.status === 429 ? 5000 * (attempt + 1) : 1500 * (attempt + 1);
@@ -110,22 +129,36 @@ export function createClassifier({ records, publicIndices, dataDir, client, mode
     const file = path.join(dir, `${key}.jsonl`);
     const system = prompt(criterion, labels);
     const allowed = new Set([...labels.map((l) => l.name), NO_LABEL]);
-    let i = 0;
+    const groups = [];
+    for (let k = 0; k < todo.length; k += BATCH) groups.push(todo.slice(k, k + BATCH).map((i) => records[i]));
+    let g = 0;
     let failures = 0;
-    const worker = async () => {
-      while (i < todo.length) {
-        const r = records[todo[i++]];
-        try {
-          const res = await classifyOne(r, system, allowed);
-          await appendFile(file, JSON.stringify(res) + "\n");
-        } catch (err) {
-          failures++;
-          if (failures > 50 && failures > i * 0.2) throw err; // the provider is down, not one bad letter
+    const handle = async (rs) => {
+      try {
+        const got = await classifyMany(rs, system, allowed);
+        const lines = rs.filter((r) => got.has(String(r.id))).map((r) => JSON.stringify(got.get(String(r.id))));
+        if (lines.length) await appendFile(file, lines.join("\n") + "\n");
+        const missing = rs.filter((r) => !got.has(String(r.id)));
+        if (job) job.done += rs.length - missing.length;
+        // Answer lost some letters (truncated JSON, dropped id): halve and retry.
+        if (missing.length && rs.length > 1) {
+          const half = Math.ceil(missing.length / 2);
+          await handle(missing.slice(0, half));
+          if (missing.length > half) await handle(missing.slice(half));
+        } else if (missing.length) {
+          failures += missing.length;
+          if (job) job.done += missing.length;
         }
-        if (job) job.done++;
+      } catch (err) {
+        failures += rs.length;
+        if (job) job.done += rs.length;
+        if (failures > 200 && failures > job?.done * 0.3) throw err; // the provider is down, not one bad batch
       }
     };
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, todo.length) }, worker));
+    const worker = async () => {
+      while (g < groups.length) await handle(groups[g++]);
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, groups.length) }, worker));
     return failures;
   }
 
