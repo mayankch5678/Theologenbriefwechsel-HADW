@@ -1325,6 +1325,7 @@ agent = await createAgent({
   publicIndices,
   dataDir: DATA_DIR,
   hybridSearch,
+  embed: embedQuery,
   client: deepseek,
   model: CHAT_MODEL,
   extra: llm.extra,

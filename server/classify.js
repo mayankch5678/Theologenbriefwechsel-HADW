@@ -33,13 +33,13 @@ const SYNC_MAX = Number(process.env.CLASSIFY_SYNC_MAX || 300);
 const CONCURRENCY = Number(process.env.CLASSIFY_CONCURRENCY || 40);
 const BATCH = Number(process.env.CLASSIFY_BATCH || 10);
 const REGEST_MAX_CHARS = 3000;
-const GROUPS_MAX = 40;
+const GROUPS_MAX = 60;
 const EXAMPLES_PER_LABEL = 3;
 const NO_LABEL = "nicht_bestimmbar";
 const STOP = new Set("der die das des dem den ein eine einer eines einem einen und oder in im auf zu zur zum von vom mit bei für an am ist sind wird werden ob oder als auch nicht eher mehr bzw zwischen dieser diesem dieses brief absender zeigt zeigen sich eine haltung".split(" "));
 const normalizeWords = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").split(" ").filter((w) => w.length >= 4 && !STOP.has(w)).map((w) => w.replace(/(en|er|es|em|e|s)$/, ""));
 
-export function createClassifier({ records, publicIndices, dataDir, llms, fieldValues }) {
+export function createClassifier({ records, publicIndices, dataDir, llms, fieldValues, embed = null }) {
   // Cache identity: the set of models that may have labelled a letter.
   const model = llms.map((l) => l.model).sort().join("+");
   const dir = path.join(dataDir, "classify");
@@ -63,35 +63,68 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
   // Label names differ between questions too ("versoehnlich" vs
   // "versoehnung_ausgleich"); labels are matched by their descriptions,
   // one-to-one, and the cache's own names are mapped to the new ones.
-  function mapLabels(theirs, mine) {
-    if (!theirs || theirs.length !== mine.length) return null;
+  // Every new label must find its own old label (by description); old
+  // labels nobody claims (e.g. a "neutral" the agent dropped this time) map
+  // to nicht_bestimmbar. New labels the old run did not have cannot be
+  // served from that cache.
+  // Label names are built from the same concept words ("versoehnlich",
+  // "versoehnung_ausgleich"): a shared 6-letter stem between the two names
+  // is the strongest signal; description overlap and (when the embedding
+  // model is up) cosine similarity back it up.
+  const stems = (name) => new Set(name.toLowerCase().split(/[^\p{L}]+/u).filter((w) => w.length >= 6).map((w) => w.slice(0, 6)));
+  const cosine = (a, b) => {
+    let d = 0, na = 0, nb = 0;
+    for (let i = 0; i < a.length; i++) { d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+    return d / (Math.sqrt(na * nb) || 1);
+  };
+  async function safeEmbed(text) {
+    if (!embed) return null;
+    try { return await embed(text); } catch { return null; }
+  }
+  async function labelScore(t, m) {
+    const nameHit = [...stems(t.name)].some((st) => stems(m.name).has(st));
+    const j = jaccard(words(`${t.name} ${t.description}`), words(`${m.name} ${m.description}`));
+    let c = 0;
+    if (!nameHit && j < 0.2) {
+      const [a, b] = await Promise.all([safeEmbed(`${t.name}: ${t.description}`), safeEmbed(`${m.name}: ${m.description}`)]);
+      if (a && b) c = cosine(a, b);
+    }
+    return Math.max(nameHit ? 0.6 : 0, j, c >= 0.8 ? c : 0);
+  }
+  async function mapLabels(theirs, mine) {
+    if (!theirs || theirs.length < mine.length) return null;
     const map = {};
     const used = new Set();
     for (const m of mine) {
       let best = null;
       for (const t of theirs) {
         if (used.has(t.name)) continue;
-        const j = jaccard(words(`${t.name} ${t.description}`), words(`${m.name} ${m.description}`));
-        if (!best || j > best.j) best = { name: t.name, j };
+        const sc = await labelScore(t, m);
+        if (!best || sc > best.sc) best = { name: t.name, sc };
       }
-      if (!best || best.j < 0.2) return null;
+      if (!best || best.sc < 0.2) return null;
       used.add(best.name);
       map[best.name] = m.name;
     }
+    for (const t of theirs) if (!used.has(t.name)) map[t.name] = NO_LABEL;
     return map;
+  }
+  async function criterionMatch(a, b) {
+    if (jaccard(words(a), words(b)) >= 0.4) return true;
+    const [ea, eb] = await Promise.all([safeEmbed(a), safeEmbed(b)]);
+    return Boolean(ea && eb && cosine(ea, eb) >= 0.85);
   }
   async function resolveKey(criterion, labels) {
     const exact = keyOf(criterion, labels);
     if (existsSync(path.join(dir, `${exact}.jsonl`))) return { key: exact, map: null };
     if (!existsSync(dir)) return { key: exact, map: null };
-    const mine = words(criterion);
     let best = null;
     for (const f of await readdir(dir)) {
       if (!f.endsWith(".meta.json")) continue;
       let meta;
       try { meta = JSON.parse(await readFile(path.join(dir, f), "utf8")); } catch { continue; }
-      if (jaccard(mine, words(meta.criterion || "")) < 0.4) continue;
-      const map = mapLabels(meta.labels, labels);
+      if (!(await criterionMatch(criterion, meta.criterion || ""))) continue;
+      const map = await mapLabels(meta.labels, labels);
       if (!map) continue;
       const lines = existsSync(path.join(dir, `${meta.key}.jsonl`)) ? (await readFile(path.join(dir, `${meta.key}.jsonl`), "utf8")).split("\n").filter(Boolean).length : 0;
       if (!best || lines > best.lines) best = { key: meta.key, lines, map };
@@ -219,7 +252,7 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
     return failures;
   }
 
-  function aggregate(cache, indices, labels, groupBy, minLetters, toNew = (x) => x) {
+  function aggregate(cache, indices, labels, groupBy, minLetters, toNew = (x) => x, sortBy = "count") {
     const labelNames = [...labels.map((l) => l.name), NO_LABEL];
     const totals = Object.fromEntries(labelNames.map((n) => [n, 0]));
     const groups = new Map();
@@ -250,10 +283,15 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
         anteile: Object.fromEntries(labels.map((l) => [l.name, g.bestimmbar ? Number((g.labels[l.name] / g.bestimmbar).toFixed(2)) : 0])),
       }))
       .sort((a, b) => b.bestimmbar - a.bestimmbar);
+    // "Which authors are MORE reconciliatory" is a question about shares,
+    // not volume: sort by the share of the asked-for label, ties by volume.
+    if (sortBy !== "count" && labels.some((l) => l.name === sortBy)) {
+      rows.sort((a, b) => b.anteile[sortBy] - a.anteile[sortBy] || b.bestimmbar - a.bestimmbar);
+    }
     return { classified, totals, gruppen_gesamt: rows.length, gruppen: rows.slice(0, GROUPS_MAX) };
   }
 
-  async function classify({ criterion, labels, indices, group_by = "sender", min_letters = 5, wait = true }) {
+  async function classify({ criterion, labels, indices, group_by = "sender", min_letters = 5, sort_by = "count", wait = true }) {
     if (!criterion || typeof criterion !== "string") return { error: "criterion fehlt" };
     if (!Array.isArray(labels) || labels.length < 2 || labels.length > 5 || !labels.every((l) => l && typeof l.name === "string" && typeof l.description === "string")) {
       return { error: "labels: 2–5 Einträge mit name und description nötig" };
@@ -264,7 +302,7 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
     if (labels.length < 2) return { error: "mindestens 2 inhaltliche Labels nötig (nicht_bestimmbar gibt es immer zusätzlich)" };
     const { key, map } = await resolveKey(criterion, labels);
     const toNew = map ? (x) => map[x] ?? x : (x) => x;
-    const inverse = map ? Object.fromEntries(Object.entries(map).map(([o, n]) => [n, o])) : null;
+    const inverse = map ? Object.fromEntries(Object.entries(map).filter(([, n]) => n !== NO_LABEL).map(([o, n]) => [n, o])) : null;
     const toOld = inverse ? (x) => inverse[x] ?? x : (x) => x;
     const scope = indices.filter((i) => !records[i].regestSynthetic);
     const withoutRegest = indices.length - scope.length;
@@ -303,7 +341,8 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
     }
     const fresh = todo.length && (!job || !job.finished) ? await readCache(key) : cache;
     if (job && !job.finished) status = "laeuft";
-    const agg = aggregate(fresh, scope, labels, group_by, min_letters, toNew);
+    const sortKey = sort_by && sort_by !== "count" ? sort_by.trim().replace(/\s+/g, "_").toLowerCase() : "count";
+    const agg = aggregate(fresh, scope, labels, group_by, min_letters, toNew, sortKey);
     const remaining = scope.length - agg.classified;
     const rate = job && job.done ? job.done / ((Date.now() - Date.parse(job.started)) / 1000) : 0;
     return {
@@ -320,6 +359,7 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
         : { hinweis: "Labels beruhen ausschließlich auf dem Regest-Wortlaut; jedes Label ist mit einem Zitat belegt. Anteile beziehen sich auf die bestimmbaren Briefe der Gruppe." }),
       verteilung_gesamt: agg.totals,
       mindestens_bestimmbare_briefe_pro_gruppe: min_letters,
+      sortiert_nach: sortKey === "count" ? "Zahl bestimmbarer Briefe" : `Anteil ${sortKey} (dann Zahl bestimmbarer Briefe)`,
       gruppen_gesamt: agg.gruppen_gesamt,
       gruppen: agg.gruppen,
     };

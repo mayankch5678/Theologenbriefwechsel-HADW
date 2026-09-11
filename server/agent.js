@@ -161,7 +161,8 @@ const TOOLS = [
           },
           filter: { type: "object", properties: FILTER_PROPERTIES, description: "Umfang (wie filter_letters). Weglassen = ganzes öffentliches Archiv." },
           group_by: { type: "string", enum: ["sender", "recipient", "year", "decade", "place_sent", "land_sent"], description: "Zusammenfassung pro … (Standard sender)." },
-          min_letters: { type: "integer", description: "Gruppen mit weniger bestimmbaren Briefen werden nicht aufgeführt (Standard 5)." },
+          min_letters: { type: "integer", description: "Gruppen mit weniger bestimmbaren Briefen werden nicht aufgeführt (Standard 5; für Rangfragen 10)." },
+          sort_by: { type: "string", description: "'count' (Standard: nach Zahl bestimmbarer Briefe) oder der Name eines deiner Labels: dann nach dessen Anteil sortiert — für 'welche Autoren sind EHER …'-Fragen den gefragten Label-Namen angeben." },
         },
         required: ["criterion", "labels"],
       },
@@ -209,7 +210,7 @@ ARBEITSWEISE
 - Inhaltsfragen in natürlicher Sprache beantwortest du mit search_letters und prüfst wichtige Treffer mit read_letter.
 - Schlagworte (Schlagworte der Editoren) sind das Urteil der Editoren über den Inhalt eines Briefs — ein Brief mit passendem Schlagwort behandelt das Thema, auch wenn das Regest den Begriff nicht wörtlich nennt.
 - Wenn ein Werkzeug nichts liefert, formuliere um oder probiere einen anderen Weg (andere Schreibweise via list_values, anderes Feld), bevor du aufgibst.
-- Fragen nach Haltung/Tendenz/Ton/Position von Autoren oder nach einem Vergleich, der Lesen erfordert ("eher versöhnlich als abgrenzend", "wer äußert sich kritisch über X"): NICHT aus einer Suchstichprobe schließen und NICHT aus Schlagwort-Zählungen (ein Schlagwort nennt das Thema, nicht die Haltung). Stattdessen classify_letters mit einem klaren Kriterium und 2–4 Labels; ohne filter für das ganze Archiv. Pro Frage nur EIN classify_letters-Aufruf — nicht mit umformulierten Kriterien oder Teilfiltern wiederholen (jeder neue Wortlaut ist ein neuer Auftrag, der das Budget halbiert). Nenne in der Antwort: Umfang, wie viele Briefe klassifiziert/bestimmbar sind, pro Autor die Anteile mit Brief-Nummern und Zitaten, und dass die Labels auf dem Regest-Wortlaut beruhen. Bei Status "laeuft" ausdrücklich als Zwischenstand kennzeichnen.
+- Fragen nach Haltung/Tendenz/Ton/Position von Autoren oder nach einem Vergleich, der Lesen erfordert ("eher versöhnlich als abgrenzend", "wer äußert sich kritisch über X"): NICHT aus einer Suchstichprobe schließen und NICHT aus Schlagwort-Zählungen (ein Schlagwort nennt das Thema, nicht die Haltung). Stattdessen classify_letters mit einem klaren Kriterium und 2–4 Labels; ohne filter für das ganze Archiv. Pro Frage nur EIN classify_letters-Aufruf — nicht mit umformulierten Kriterien oder Teilfiltern wiederholen (jeder neue Wortlaut ist ein neuer Auftrag, der das Budget halbiert). Bei "welche Autoren sind eher X"-Fragen sort_by auf das Label X und min_letters 10 setzen — die Rangfolge ist der Anteil, nicht die Briefzahl; viel schreibende Autoren getrennt erwähnen. Nenne in der Antwort: Umfang, wie viele Briefe klassifiziert/bestimmbar sind, pro Autor Anteil und Zahlen mit Brief-Nummern und Zitaten, und dass die Labels auf dem Regest-Wortlaut beruhen. Bei Status "laeuft" ausdrücklich als Zwischenstand kennzeichnen.
 - "Ausland"/"aus dem Ausland": zwei Wege, beide ausführen und beide Zahlen nennen — (a) Schlagworte "Nachrichten aus …" (list_values/filter_letters mit subject) und (b) die Ortsklassifikation: count_by({by:"land_mentioned", filter:{mentions_foreign:true}}) für die Verteilung nach Ländern und filter_letters({mentions_foreign:true}) für Beispiele. Formale Mängel in Regesten (unvollständige Sätze, Tippfehler) beantwortet regest_issues.
 
 STRIKTE REGELN FÜR DIE ANTWORT
@@ -222,7 +223,7 @@ STRIKTE REGELN FÜR DIE ANTWORT
 7. Stelle keine Rückfragen und biete keine weiteren Schritte an ("Soll ich …?"). Wenn eine Prüfung sinnvoll ist, führe sie selbst mit den Werkzeugen aus, bevor du antwortest.
 8. Schreibe die Antwort erst, wenn alle Werkzeugaufrufe abgeschlossen sind — kein Antworttext in derselben Nachricht wie ein Werkzeugaufruf. Die Antwort ist eine einzige, vollständige Nachricht.`;
 
-export async function createAgent({ records, publicIndices, dataDir, hybridSearch, client, model, extra = {}, extractCitedIds, normalize }) {
+export async function createAgent({ records, publicIndices, dataDir, hybridSearch, embed = null, client, model, extra = {}, extractCitedIds, normalize }) {
   // ---- static lookups over public letters ----------------------------------
   const byId = new Map();
   for (const i of publicIndices) byId.set(String(records[i].id), i);
@@ -357,7 +358,7 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
 
   const clampInt = (v, def, max) => Math.max(0, Math.min(max, Number.isFinite(Number(v)) && v !== undefined ? Number(v) : def));
 
-  const classifier = createClassifier({ records, publicIndices, dataDir, llms: createBatchPool(), fieldValues });
+  const classifier = createClassifier({ records, publicIndices, dataDir, llms: createBatchPool(), fieldValues, embed });
 
   // ---- tools -----------------------------------------------------------------
   const tools = {
@@ -443,11 +444,11 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
       return { feld: field, treffer_gesamt: sorted.length, werte: sorted.slice(0, cap).map(([wert, briefe]) => ({ wert, briefe })) };
     },
 
-    async classify_letters({ criterion, labels, filter, group_by, min_letters }) {
+    async classify_letters({ criterion, labels, filter, group_by, min_letters, sort_by }) {
       await Promise.all([loadPlaces(), loadRegestIssues()]);
       const indices = filtered(filter || {});
       if (!indices.length) return { error: "Der Filter trifft keinen Brief." };
-      return classifier.classify({ criterion, labels, indices, group_by: group_by || "sender", min_letters: clampInt(min_letters, 5, 1000) });
+      return classifier.classify({ criterion, labels, indices, group_by: group_by || "sender", min_letters: clampInt(min_letters, 5, 1000), sort_by });
     },
 
     async regest_issues({ art, limit, offset }) {
@@ -638,7 +639,9 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
     // table counts as a citation for the source cards if a tool returned it.
     const bare = [...answer.matchAll(/\b(\d{5})\b/g)].map((m) => m[1]);
     const cited = [...new Set([...extractCitedIds(answer), ...bare])].filter((id) => seenIds.has(id));
-    const ordered = [...cited, ...[...seenIds].filter((id) => !cited.includes(id))].slice(0, SOURCES_MAX);
+    // Every cited id ships as a source card (the eval treats a cited id
+    // without a source as invented); uncited seen ids fill up to the cap.
+    const ordered = [...cited, ...[...seenIds].filter((id) => !cited.includes(id))].slice(0, Math.max(SOURCES_MAX, cited.length));
     const sources = ordered.map((id) => {
       const r = records[byId.get(id)];
       return {
