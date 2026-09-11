@@ -1214,20 +1214,6 @@ app.post("/api/retrieve", async (req, res) => {
 app.get("/api/questions", async (req, res) => {
   const groups = [
     {
-      title: "Demo & Kontrolle",
-      questions: [
-        "Welche Briefe erwähnen den Heidelberger Katechismus?",
-        "Welche Briefe betreffen Frage 60 des Heidelberger Katechismus?",
-        "Welche Briefe schrieb Kaspar Olevian an Heinrich Bullinger?",
-        "Welche Briefe stammen aus dem Jahr 1563?",
-        "Fasse den Brief 18494 zusammen.",
-        "Wer schickte Calvin die lateinische Übersetzung des Heidelberger Katechismus?",
-        "Wie viele Briefe enthält das Archiv insgesamt?",
-        "Fasse den Brief 99999 zusammen.",
-        "Was ist das beste Rezept für Pizza?",
-      ],
-    },
-    {
       // Daniel Degen's research questions (2026-09-04) — archive-level
       // questions the one-shot path cannot answer; the UI switches to the
       // agent for this group.
@@ -1240,6 +1226,20 @@ app.get("/api/questions", async (req, res) => {
         "Suche Briefe, die von Frauen geschrieben wurden",
         "Suche Briefe, deren Regesten unvollständige Sätze enthalten",
         "Welche Briefautoren sind mehr auf konfessionelle (religiöse) Versöhnung und Ausgleich bedacht als auf Abgrenzung?",
+      ],
+    },
+    {
+      title: "Demo & Kontrolle",
+      questions: [
+        "Welche Briefe erwähnen den Heidelberger Katechismus?",
+        "Welche Briefe betreffen Frage 60 des Heidelberger Katechismus?",
+        "Welche Briefe schrieb Kaspar Olevian an Heinrich Bullinger?",
+        "Welche Briefe stammen aus dem Jahr 1563?",
+        "Fasse den Brief 18494 zusammen.",
+        "Wer schickte Calvin die lateinische Übersetzung des Heidelberger Katechismus?",
+        "Wie viele Briefe enthält das Archiv insgesamt?",
+        "Fasse den Brief 99999 zusammen.",
+        "Was ist das beste Rezept für Pizza?",
       ],
     },
   ];

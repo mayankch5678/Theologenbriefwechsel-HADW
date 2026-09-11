@@ -472,7 +472,7 @@ function renderSourceList(sources) {
     const { groups } = await res.json();
     groups.forEach((g, gi) => {
       const det = document.createElement('details');
-      if (gi === 0) det.open = true;
+      if (gi <= 1) det.open = true; // research questions + demo set open
       const sum = el('summary', null, `${g.title} (${g.questions.length})`);
       det.appendChild(sum);
       for (const q of g.questions) {
