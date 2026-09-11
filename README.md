@@ -127,6 +127,7 @@ public indexes and decides the next step itself (`server/agent.js`):
 | `filter_letters` | metadata filter over the whole public archive (sender, recipient, years, places, subject, subject category, female sender, regest contains …) |
 | `count_by` | group-by count over the archive or a filtered subset (e.g. subjects of category *Ereignis*) |
 | `list_values` | exact spellings of subjects / names / places with letter counts |
+| `regest_issues` | findings of the offline regest quality check (see below) |
 | `read_letter` | one letter in full: metadata, regest, tags with category, commentary, transcription |
 
 Guard rails are the same as `/api/chat`: tools only ever see `offen` letters,
@@ -136,6 +137,26 @@ in the UI as "Rechercheschritte"; every run is appended to
 `data/agent-log.jsonl`. Expect 1 step / 3–10 s for count and filter questions
 and 5–6 steps / 70–90 s for open research questions. `AGENT_MAX_STEPS` (8)
 caps the loop.
+
+Two offline batch jobs feed the agent with what the archive itself does not
+record (both resumable, both call DeepSeek, both write to `data/`):
+
+```bash
+npm run classify:places   # data/places.json — every place name → land / im_reich
+                          # (3,665 names, ~5 min); gives filter_letters/count_by the
+                          # land_sent / land_mentioned / mentions_foreign fields
+npm run check:regests     # data/regest-check.jsonl — every editorial regest checked for
+                          # broken sentences, word errors, typos (18k regests, hours;
+                          # CONCURRENCY=30); read by the regest_issues tool, partial
+                          # results are served with the checked/total count
+```
+
+The agent path has its own evaluation, `npm run eval:agent` (`test/agentEval.js`):
+per question it checks what can be checked deterministically — tools used,
+step count, strings and ids the answer must (not) contain, citation
+precision against the gold fixtures — and writes `test/agent-review-latest.md`
+with every trace and answer for human grading. Hard failures (an `intern`
+letter, an id no tool returned) exit 1.
 
 Corpus fields added for this (rebuild with `npm run build:corpus`; the
 embedded `text` is unchanged, so `build:index` is not needed): `senderIds`,

@@ -14,7 +14,7 @@
 // Kept out of server.js on purpose: the one-shot path and its eval stay
 // untouched; this module receives the loaded indexes at startup.
 
-import { readFile, appendFile } from "node:fs/promises";
+import { readFile, appendFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -51,6 +51,11 @@ const FILTER_PROPERTIES = {
   regest_contains: { type: "string", description: "Wort oder Wortgruppe, die wörtlich im editorischen Regest vorkommt (nur Briefe mit echtem Regest)." },
   has_regest: { type: "boolean", description: "true = nur Briefe mit editorischem Regest; false = nur Briefe ohne (reine Metadaten)." },
   has_volltext: { type: "boolean", description: "true = nur Briefe mit Transkription des Originaltexts." },
+  land_sent: { type: "string", description: "Land/Region des Absendeorts (Teilstring, z.B. 'Frankreich', 'Eidgenossenschaft', 'Italien', 'Reich'). Werte via list_values field='land'." },
+  land_mentioned: { type: "string", description: "Land/Region eines im Brief erwähnten Orts oder des Zielorts (Teilstring)." },
+  mentions_foreign: { type: "boolean", description: "true = der Brief erwähnt (Schlagwort Orte / Zielort) mindestens einen Ort außerhalb des deutschsprachigen Reichs — 'Ausland' aus deutscher Sicht (Eidgenossenschaft, Niederlande, Frankreich, Italien, England, Polen, Ungarn, Osmanisches Reich …)." },
+  sent_from_foreign: { type: "boolean", description: "true = der Absendeort liegt außerhalb des deutschsprachigen Reichs." },
+  regest_issue: { type: "boolean", description: "true = die Regest-Qualitätsprüfung (Batch, scripts/checkRegests.js) hat für diesen Brief einen formalen Mangel gemeldet (unvollständiger Satz, Wortfehler, Tippfehler)." },
 };
 
 const TOOLS = [
@@ -103,8 +108,8 @@ const TOOLS = [
         properties: {
           by: {
             type: "string",
-            enum: ["subject", "subject_group", "sender", "recipient", "year", "decade", "place_sent", "place_received", "keyword_person", "keyword_place"],
-            description: "Gruppierungsfeld.",
+            enum: ["subject", "subject_group", "sender", "recipient", "year", "decade", "place_sent", "place_received", "keyword_person", "keyword_place", "land_sent", "land_mentioned"],
+            description: "Gruppierungsfeld. land_* = Land/Region des Absendeorts bzw. der erwähnten Orte (Ortsklassifikation).",
           },
           subject_group: { type: "string", enum: SUBJECT_GROUPS, description: "Nur bei by='subject': nur Schlagworte dieser Kategorie zählen." },
           filter: { type: "object", properties: FILTER_PROPERTIES, description: "Optionale Einschränkung der gezählten Briefe (wie filter_letters)." },
@@ -124,12 +129,29 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
-          field: { type: "string", enum: ["subject", "sender", "recipient", "place_sent", "place_received", "keyword_person", "keyword_place"] },
+          field: { type: "string", enum: ["subject", "sender", "recipient", "place_sent", "place_received", "keyword_person", "keyword_place", "land"] },
           contains: { type: "string", description: "Teilstring (Groß-/Kleinschreibung egal)." },
           subject_group: { type: "string", enum: SUBJECT_GROUPS, description: "Nur bei field='subject'." },
           limit: { type: "integer", description: `Max. Werte (Standard 30, höchstens ${GROUPS_MAX}).` },
         },
         required: ["field"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "regest_issues",
+      description:
+        "Ergebnisse der Regest-Qualitätsprüfung: ein Batch-Lauf hat jedes editorische Regest auf formale Mängel geprüft — unvollständige/abgebrochene Sätze, doppelte oder fehlende Wörter, Tippfehler. " +
+        "Liefert die betroffenen Briefe mit der beanstandeten Stelle. Für Fragen wie 'Briefe, deren Regesten unvollständige Sätze enthalten'. Nennt auch, wie viele Regesten bereits geprüft sind.",
+      parameters: {
+        type: "object",
+        properties: {
+          art: { type: "string", enum: ["unvollstaendig", "wortfehler", "tippfehler", "alle"], description: "Mangelart (Standard: alle)." },
+          limit: { type: "integer", description: `Briefe pro Seite (Standard 25, höchstens ${PAGE_MAX}).` },
+          offset: { type: "integer", description: "Startposition für weitere Seiten." },
+        },
       },
     },
   },
@@ -158,6 +180,7 @@ ARBEITSWEISE
 - Inhaltsfragen in natürlicher Sprache beantwortest du mit search_letters und prüfst wichtige Treffer mit read_letter.
 - Schlagworte (Schlagworte der Editoren) sind das Urteil der Editoren über den Inhalt eines Briefs — ein Brief mit passendem Schlagwort behandelt das Thema, auch wenn das Regest den Begriff nicht wörtlich nennt.
 - Wenn ein Werkzeug nichts liefert, formuliere um oder probiere einen anderen Weg (andere Schreibweise via list_values, anderes Feld), bevor du aufgibst.
+- "Ausland"/"aus dem Ausland": zwei Wege, beide ausführen und beide Zahlen nennen — (a) Schlagworte "Nachrichten aus …" (list_values/filter_letters mit subject) und (b) die Ortsklassifikation: count_by({by:"land_mentioned", filter:{mentions_foreign:true}}) für die Verteilung nach Ländern und filter_letters({mentions_foreign:true}) für Beispiele. Formale Mängel in Regesten (unvollständige Sätze, Tippfehler) beantwortet regest_issues.
 
 STRIKTE REGELN FÜR DIE ANTWORT
 1. Jede Aussage über einen Brief wird mit seiner Nummer belegt, immer in der Form "Brief 18495" (auch in Tabellen und Listen: "Brief 18495", nie die nackte Zahl). Nenne AUSSCHLIESSLICH Brief-Nummern, die in den Werkzeugergebnissen vorkamen.
@@ -166,7 +189,8 @@ STRIKTE REGELN FÜR DIE ANTWORT
 4. Nenne bei Listen die Gesamtzahl aus dem Werkzeug und führe dann die Briefe auf (bei mehr als ~25 eine Auswahl mit Hinweis auf die Gesamtzahl). Bei "Welche Briefe ..." ist eine vollständige Aufzählung gewünscht, sofern sie unter ~40 bleibt.
 5. Wenn die Daten eine Frage strukturell nicht beantworten können (fehlendes Feld, keine Treffer), sage das klar, statt zu raten. Fehlt etwa nur ein Teil (z.B. Ortszuordnung), erkläre, was du geprüft hast.
 6. Kurz, präzise, ohne Floskeln. Beginne direkt mit der Antwort — keine Einleitung wie "Ich habe genug Daten", keine Entschuldigungen, keine Beschreibung deiner Werkzeugaufrufe.
-7. Stelle keine Rückfragen und biete keine weiteren Schritte an ("Soll ich …?"). Wenn eine Prüfung sinnvoll ist, führe sie selbst mit den Werkzeugen aus, bevor du antwortest.`;
+7. Stelle keine Rückfragen und biete keine weiteren Schritte an ("Soll ich …?"). Wenn eine Prüfung sinnvoll ist, führe sie selbst mit den Werkzeugen aus, bevor du antwortest.
+8. Schreibe die Antwort erst, wenn alle Werkzeugaufrufe abgeschlossen sind — kein Antworttext in derselben Nachricht wie ein Werkzeugaufruf. Die Antwort ist eine einzige, vollständige Nachricht.`;
 
 export async function createAgent({ records, publicIndices, dataDir, hybridSearch, client, model, extractCitedIds, normalize }) {
   // ---- static lookups over public letters ----------------------------------
@@ -184,6 +208,52 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
     }
   }
 
+  // Place classification (scripts/classifyPlaces.js): name -> { land, im_reich, sicher }.
+  // Optional, reloaded when the file changes so a running batch shows up.
+  const placesFile = path.join(dataDir, "places.json");
+  let places = new Map();
+  let placesMtime = 0;
+  async function loadPlaces() {
+    if (!existsSync(placesFile)) return;
+    const m = (await stat(placesFile)).mtimeMs;
+    if (m === placesMtime) return;
+    places = new Map(Object.entries(JSON.parse(await readFile(placesFile, "utf8"))));
+    placesMtime = m;
+  }
+  await loadPlaces();
+  const landOf = (name) => places.get(name)?.land || null;
+  const foreign = (name) => {
+    const p = places.get(name);
+    return p ? !p.im_reich : false;
+  };
+  const mentionedPlaces = (r) => [...new Set([...(r.keywordPlaces || []), ...(r.placesReceived || [])])];
+
+  // Regest quality findings (scripts/checkRegests.js), same lazy reload.
+  const regestFile = path.join(dataDir, "regest-check.jsonl");
+  let regestIssues = new Map(); // id -> findings (only letters with findings)
+  let regestChecked = 0;
+  let regestMtime = 0;
+  async function loadRegestIssues() {
+    if (!existsSync(regestFile)) return;
+    const m = (await stat(regestFile)).mtimeMs;
+    if (m === regestMtime) return;
+    const next = new Map();
+    let n = 0;
+    for (const line of (await readFile(regestFile, "utf8")).split("\n")) {
+      if (!line) continue;
+      let d;
+      try { d = JSON.parse(line); } catch { continue; }
+      n++;
+      const findings = [...(d.maengel || []), ...(d.heuristik || [])];
+      if (findings.length && byId.has(d.id)) next.set(d.id, findings);
+    }
+    regestIssues = next;
+    regestChecked = n;
+    regestMtime = m;
+  }
+  await loadRegestIssues();
+  const regestTotal = publicIndices.filter((i) => !records[i].regestSynthetic).length;
+
   const fieldValues = (r, field) => {
     switch (field) {
       case "subject": return r.keywordSubjects || [];
@@ -196,6 +266,9 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
       case "place_received": return r.placesReceived || [];
       case "keyword_person": return r.keywordPeople || [];
       case "keyword_place": return r.keywordPlaces || [];
+      case "land_sent": return [...new Set((r.placesSent || []).map(landOf).filter(Boolean))];
+      case "land_mentioned": return [...new Set(mentionedPlaces(r).map(landOf).filter(Boolean))];
+      case "land": return [...new Set([...(r.placesSent || []), ...mentionedPlaces(r)].map(landOf).filter(Boolean))];
       default: return [];
     }
   };
@@ -230,6 +303,11 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
     }
     if (typeof f.has_regest === "boolean" && Boolean(!r.regestSynthetic) !== f.has_regest) return false;
     if (typeof f.has_volltext === "boolean" && Boolean(r.hasFullText) !== f.has_volltext) return false;
+    if (f.land_sent && !has(fieldValues(r, "land_sent"), f.land_sent)) return false;
+    if (f.land_mentioned && !has(fieldValues(r, "land_mentioned"), f.land_mentioned)) return false;
+    if (typeof f.mentions_foreign === "boolean" && mentionedPlaces(r).some(foreign) !== f.mentions_foreign) return false;
+    if (typeof f.sent_from_foreign === "boolean" && (r.placesSent || []).some(foreign) !== f.sent_from_foreign) return false;
+    if (typeof f.regest_issue === "boolean" && regestIssues.has(String(r.id)) !== f.regest_issue) return false;
     return true;
   }
 
@@ -268,7 +346,8 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
       };
     },
 
-    filter_letters({ limit, offset, ...f }) {
+    async filter_letters({ limit, offset, ...f }) {
+      await Promise.all([loadPlaces(), loadRegestIssues()]);
       const cap = clampInt(limit, 20, PAGE_MAX);
       const off = clampInt(offset, 0, 1e9);
       const idx = filtered(f).sort((a, b) => (records[a].dateIso || "9999").localeCompare(records[b].dateIso || "9999"));
@@ -280,8 +359,9 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
       };
     },
 
-    count_by({ by, subject_group, filter, top }) {
+    async count_by({ by, subject_group, filter, top }) {
       if (!by) return { error: "by fehlt" };
+      await Promise.all([loadPlaces(), loadRegestIssues()]);
       const cap = clampInt(top, 20, GROUPS_MAX);
       const idx = filtered(filter);
       const counts = new Map();
@@ -301,7 +381,8 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
         gruppiert_nach: by,
         ...(subject_group ? { schlagwort_kategorie: subject_group } : {}),
         filter: filter || null,
-        hinweis: "briefe_im_filter = alle gezählten Briefe; briefe_mit_wert = davon Briefe, die mindestens einen Wert dieses Felds tragen.",
+        hinweis: "briefe_im_filter = alle gezählten Briefe; briefe_mit_wert = davon Briefe, die mindestens einen Wert dieses Felds tragen." +
+          (by.startsWith("land") ? ` Ortsklassifikation: ${places.size} Orte zugeordnet.` : ""),
         briefe_im_filter: idx.length,
         briefe_mit_wert: carrying,
         verschiedene_werte: sorted.length,
@@ -309,8 +390,9 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
       };
     },
 
-    list_values({ field, contains, subject_group, limit }) {
+    async list_values({ field, contains, subject_group, limit }) {
       if (!field) return { error: "field fehlt" };
+      await loadPlaces();
       const cap = clampInt(limit, 30, GROUPS_MAX);
       const n = normalize(contains || "");
       const counts = new Map();
@@ -327,6 +409,31 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
       }
       const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
       return { feld: field, treffer_gesamt: sorted.length, werte: sorted.slice(0, cap).map(([wert, briefe]) => ({ wert, briefe })) };
+    },
+
+    async regest_issues({ art, limit, offset }) {
+      await loadRegestIssues();
+      const cap = clampInt(limit, 25, PAGE_MAX);
+      const off = clampInt(offset, 0, 1e9);
+      const kind = art && art !== "alle" ? art : null;
+      const rows = [];
+      for (const [id, findings] of regestIssues) {
+        const sel = kind ? findings.filter((x) => x.art === kind) : findings;
+        if (sel.length) rows.push({ id, findings: sel });
+      }
+      rows.sort((a, b) => a.id.localeCompare(b.id));
+      return {
+        hinweis: "Formale Prüfung der editorischen Regesten (Heuristik + Sprachmodell). Regesten sind bewusst im Telegrammstil ohne Subjekt geschrieben; das gilt nicht als Mangel.",
+        regesten_geprueft: regestChecked,
+        regesten_gesamt: regestTotal,
+        pruefung_vollstaendig: regestChecked >= regestTotal,
+        briefe_mit_befund: rows.length,
+        offset: off,
+        briefe: rows.slice(off, off + cap).map(({ id, findings }) => {
+          const r = records[byId.get(id)];
+          return { id, zitierzeile: r.long, befunde: findings.map((x) => ({ art: x.art, stelle: x.stelle, hinweis: x.hinweis })) };
+        }),
+      };
     },
 
     read_letter({ id }) {
@@ -397,6 +504,11 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
     const messages = [{ role: "system", content: SYSTEM_PROMPT }, ...history, { role: "user", content: question }];
     const trace = [];
     const seenIds = new Set();
+    // Text the model emits in the same message as a tool call. DeepSeek
+    // sometimes writes section 1 of the answer, calls tools for section 2,
+    // and then returns only section 2 as the final message — so substantial
+    // partials are kept and prepended to the final answer.
+    const partials = [];
     let answer = "";
     let steps = 0;
     let usage = { prompt_tokens: 0, completion_tokens: 0 };
@@ -415,6 +527,7 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
         break;
       }
       steps++;
+      if (msg.content && msg.content.trim().length >= 200) partials.push(msg.content.trim());
       messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: msg.tool_calls });
       for (const call of msg.tool_calls) {
         const name = call.function?.name;
@@ -449,6 +562,10 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
         });
         messages.push({ role: "tool", tool_call_id: call.id, content });
       }
+    }
+
+    if (partials.length && !partials.every((p) => answer.includes(p.slice(0, 80)))) {
+      answer = [...partials.filter((p) => !answer.includes(p.slice(0, 80))), answer].join("\n\n");
     }
 
     // Citation guard — same contract as /api/chat: a cited id must have been
@@ -519,6 +636,8 @@ function summarize(name, result) {
       return `${result.briefe_im_filter} Briefe im Filter, ${result.briefe_mit_wert} mit Wert, ${result.verschiedene_werte} Werte; Top: ` + (result.gruppen || []).slice(0, 3).map((g) => `${g.wert} (${g.briefe})`).join(", ");
     case "list_values":
       return `${result.treffer_gesamt} Werte; Top: ` + (result.werte || []).slice(0, 3).map((g) => `${g.wert} (${g.briefe})`).join(", ");
+    case "regest_issues":
+      return `${result.briefe_mit_befund} Briefe mit Befund (${result.regesten_geprueft}/${result.regesten_gesamt} Regesten geprüft)`;
     case "read_letter":
       return `Brief ${result.id}: ${result.zitierzeile}`;
     default:
