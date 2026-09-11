@@ -15,6 +15,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
+import { createAgent } from "./agent.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "..", "data");
@@ -1226,6 +1227,21 @@ app.get("/api/questions", async (req, res) => {
         "Was ist das beste Rezept für Pizza?",
       ],
     },
+    {
+      // Daniel Degen's research questions (2026-09-04) — archive-level
+      // questions the one-shot path cannot answer; the UI switches to the
+      // agent for this group.
+      title: "Archivfragen (Agent-Modus)",
+      agent: true,
+      questions: [
+        "Welche Briefe behandeln Nachrichten aus dem Ausland (von Deutschland aus gesehen)?",
+        "Welches Ereignis wird in den Briefen am häufigsten thematisiert?",
+        "Welche Bibelstelle wird am Häufigsten im Zusammenhang mit dem Abendmahl erwähnt?",
+        "Suche Briefe, die von Frauen geschrieben wurden",
+        "Suche Briefe, deren Regesten unvollständige Sätze enthalten",
+        "Welche Briefautoren sind mehr auf konfessionelle (religiöse) Versöhnung und Ausgleich bedacht als auf Abgrenzung?",
+      ],
+    },
   ];
   try {
     const gen = JSON.parse(
@@ -1242,9 +1258,55 @@ app.get("/api/questions", async (req, res) => {
   res.json({ groups });
 });
 
+// Agentic path (server/agent.js): the model drives deterministic tools —
+// metadata filter, group-by count, value lookup, full-letter read — plus the
+// hybrid search above, over the same public indexes. Same request shape as
+// /api/chat, same source-card shape back, plus the tool trace. The one-shot
+// /api/chat stays as is (and so does its eval); this is the path for
+// archive-level questions it cannot answer (counting, "written by women",
+// "most-cited Bible passage with X").
+let agent = null;
+async function hybridSearch(query) {
+  const queryVec = await embedQuery(query);
+  const retrieved = retrieve(queryVec, query);
+  const { hits } = await applyRerank(query, retrieved.hits);
+  return { hits, retrieved };
+}
+
+app.post("/api/agent", async (req, res) => {
+  try {
+    const { message, history: rawHistory } = req.body;
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "Missing 'message' string in request body." });
+    }
+    if (!agent) return res.status(503).json({ error: "Agent not initialised." });
+    const history = sanitizeHistory(rawHistory);
+    const started = Date.now();
+    const out = await agent.run(message, history);
+    res.json({
+      answer: out.answer,
+      agent: {
+        steps: out.steps,
+        trace: out.trace,
+        citationRetry: out.citationRetry,
+        citedIds: out.citedIds,
+        seenCount: out.seenCount,
+        usage: out.usage,
+        ms: Date.now() - started,
+      },
+      sources: out.sources,
+    });
+  } catch (err) {
+    const cause = err?.cause?.cause?.code || err?.cause?.code || err?.status || err?.message;
+    console.error("Agent failed:", cause);
+    res.status(503).json({ error: `Der Agent konnte die Frage nicht bearbeiten (${cause}).`, sources: [] });
+  }
+});
+
 app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
+    agent: Boolean(agent),
     letters: records.length,
     retrievable: publicIndices.length,
     subjects: subjectIndex.size,
@@ -1258,6 +1320,17 @@ app.get("/api/health", (req, res) => {
 await loadIndex();
 await loadChunkIndex();
 await probeRerank();
+agent = await createAgent({
+  records,
+  publicIndices,
+  dataDir: DATA_DIR,
+  hybridSearch,
+  client: deepseek,
+  model: CHAT_MODEL,
+  extractCitedIds,
+  normalize,
+});
+console.log(`Agent tools ready: ${Object.keys(agent.tools).join(", ")} (max ${process.env.AGENT_MAX_STEPS || 8} steps).`);
 app.listen(PORT, () => {
   console.log(`ThBw RAG chatbot running at http://localhost:${PORT}`);
 });

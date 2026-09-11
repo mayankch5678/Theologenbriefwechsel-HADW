@@ -68,11 +68,12 @@ async function main() {
 
   // Pre-load small reference collections into id -> label maps so we can
   // resolve schlagworte/textsorte ObjectId references without N+1 queries.
-  console.log("Loading reference collections (people, orts, saches, textsortes)...");
-  const [people, orts, saches, textsortes] = await Promise.all([
-    db.collection("people").find({}, { projection: { short: 1 } }).toArray(),
+  console.log("Loading reference collections (people, orts, saches, sachgruppes, textsortes)...");
+  const [people, orts, saches, sachgruppes, textsortes] = await Promise.all([
+    db.collection("people").find({}, { projection: { short: 1, weiblich: 1, namen: 1, kollektiv: 1 } }).toArray(),
     db.collection("orts").find({}, { projection: { short: 1 } }).toArray(),
-    db.collection("saches").find({}, { projection: { short: 1, alternativen: 1 } }).toArray(),
+    db.collection("saches").find({}, { projection: { short: 1, alternativen: 1, typ: 1 } }).toArray(),
+    db.collection("sachgruppes").find({}, { projection: { short: 1 } }).toArray(),
     db.collection("textsortes").find({}, { projection: { short: 1 } }).toArray(),
   ]);
   const nameMap = new Map();
@@ -80,6 +81,28 @@ async function main() {
     for (const doc of coll) {
       nameMap.set(String(doc._id), unwrap(doc.short));
     }
+  }
+  // Letters do not reference people directly: verfasser[].person.v and
+  // schlagworte.personen[] hold ids from the `zitiernames` collection (a
+  // person's citation-name variants), and each person lists its variants in
+  // people.namen[]. Invert that so a citation-name id resolves to the person
+  // record — which is where gender (weiblich) and the stable person id live.
+  // (Before this map existed, keywordPeople was silently empty on every
+  // letter: the ids never matched anything in `people`.)
+  const personByZitiername = new Map();
+  for (const doc of people) {
+    for (const z of doc.namen || []) personByZitiername.set(String(z), doc);
+  }
+  // Subject thesaurus entries carry a category (typ -> sachgruppes: Ereignis,
+  // Bibelstelle, Drucktitel, ...). Carried per subject so archive-level
+  // questions ("which event is discussed most often", "which Bible passage
+  // is cited most with the Eucharist") can be answered by counting tags of
+  // one category instead of guessing from a top-K sample.
+  const sachgruppeName = new Map(sachgruppes.map((g) => [String(g._id), unwrap(g.short)]));
+  const subjectGroup = new Map();
+  for (const doc of saches) {
+    const typ = unwrap(doc.typ);
+    subjectGroup.set(String(doc._id), typ ? sachgruppeName.get(String(typ)) || null : null);
   }
   // The subject thesaurus carries a hand-curated synonym ring per subject
   // (alternativen[].text.v — Latin and early-modern German variant labels,
@@ -99,6 +122,20 @@ async function main() {
     unwrapArray(arr)
       .map((id) => nameMap.get(String(id)))
       .filter(Boolean);
+  // Correspondent side (verfasser / adressat): display name as before, plus
+  // the resolved person record for id and gender.
+  const resolveSide = (arr) => {
+    const entries = unwrapArray(arr);
+    const names = entries.map((v) => v?.nameMitAmt?.combi).filter(Boolean);
+    const persons = entries
+      .map((v) => personByZitiername.get(String(unwrap(v?.person) ?? "")))
+      .filter(Boolean);
+    return {
+      names,
+      ids: [...new Set(persons.map((p) => String(p._id)))],
+      female: persons.some((p) => unwrap(p.weiblich) === true),
+    };
+  };
 
   const cursor = db.collection("briefs").find({});
   const total = await db.collection("briefs").countDocuments();
@@ -126,14 +163,21 @@ async function main() {
     const dateIso = doc.datierung?.iso?.v ? new Date(doc.datierung.iso.v).toISOString().slice(0, 10) : null;
     const dateDisplay = unwrap(doc.datierung?.schoen) || null;
 
-    const senders = unwrapArray(doc.verfasser).map((v) => v?.nameMitAmt?.combi).filter(Boolean);
-    const recipients = unwrapArray(doc.adressat).map((v) => v?.nameMitAmt?.combi).filter(Boolean);
+    const senderSide = resolveSide(doc.verfasser);
+    const recipientSide = resolveSide(doc.adressat);
+    const senders = senderSide.names;
+    const recipients = recipientSide.names;
     const placesSent = unwrapArray(doc.absendeort).map((v) => unwrap(v?.name)).filter(Boolean);
     const placesReceived = unwrapArray(doc.zielortName);
 
-    const keywordPeople = resolveRefs(doc.schlagworte?.personen);
+    const keywordPeople = unwrapArray(doc.schlagworte?.personen)
+      .map((id) => unwrap(personByZitiername.get(String(id))?.short))
+      .filter(Boolean);
     const keywordPlaces = resolveRefs(doc.schlagworte?.orte);
-    const keywordSubjects = resolveRefs(doc.schlagworte?.sachen);
+    const keywordSubjectIds = unwrapArray(doc.schlagworte?.sachen).filter((id) => nameMap.has(String(id)));
+    const keywordSubjects = keywordSubjectIds.map((id) => nameMap.get(String(id)));
+    // Parallel to keywordSubjects: the subject category or null.
+    const keywordSubjectGroups = keywordSubjectIds.map((id) => subjectGroup.get(String(id)) ?? null);
     // Synonym-ring labels for this letter's subjects. Kept out of `text` so
     // existing embeddings stay valid — only the keyword index reads them.
     const subjectVariants = [
@@ -184,7 +228,10 @@ async function main() {
     // The text actually embedded/searched.
     const textParts = [long, regest];
     if (keywordSubjects.length) textParts.push("Schlagworte: " + keywordSubjects.join(", "));
-    if (keywordPeople.length) textParts.push("Erwähnte Personen: " + keywordPeople.join(", "));
+    // keywordPeople is deliberately NOT part of `text`: it only started
+    // resolving with the zitiername map, and adding it would change the
+    // embedded text of ~14k letters and force a full re-embed. Revisit
+    // together with the next build:index run.
     if (keywordPlaces.length) textParts.push("Erwähnte Orte: " + keywordPlaces.join(", "));
 
     records.push({
@@ -197,6 +244,10 @@ async function main() {
       dateDisplay,
       senders,
       recipients,
+      senderIds: senderSide.ids,
+      recipientIds: recipientSide.ids,
+      senderFemale: senderSide.female,
+      recipientFemale: recipientSide.female,
       placesSent,
       placesReceived,
       regest,
@@ -204,6 +255,7 @@ async function main() {
       keywordPeople,
       keywordPlaces,
       keywordSubjects,
+      keywordSubjectGroups,
       subjectVariants,
       cmif,
       incipit,

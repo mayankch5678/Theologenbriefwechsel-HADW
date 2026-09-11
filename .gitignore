@@ -21,3 +21,4 @@ local-docs/
 # Raw demo recordings stay local; the compressed cut is committed.
 Demo/*
 !Demo/demo-2026-08-31.mp4
+data/agent-log.jsonl

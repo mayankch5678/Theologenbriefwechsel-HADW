@@ -112,6 +112,38 @@ never touched.
 4. **Embedding neighbours** and **transcription passages** — capped, floored,
    reranked; supplements only.
 
+## Agent mode (`POST /api/agent`)
+
+The one-shot path above cannot answer archive-level questions — "which event
+is discussed most often", "letters written by women", "which Bible passage is
+cited most with the Eucharist" — because no top-K sample stands in for the
+whole archive. In agent mode (checkbox in the UI, or `POST /api/agent` with the
+same body as `/api/chat`) the model drives deterministic tools over the same
+public indexes and decides the next step itself (`server/agent.js`):
+
+| Tool | What it does |
+|---|---|
+| `search_letters` | the hybrid retrieval above, as a tool |
+| `filter_letters` | metadata filter over the whole public archive (sender, recipient, years, places, subject, subject category, female sender, regest contains …) |
+| `count_by` | group-by count over the archive or a filtered subset (e.g. subjects of category *Ereignis*) |
+| `list_values` | exact spellings of subjects / names / places with letter counts |
+| `read_letter` | one letter in full: metadata, regest, tags with category, commentary, transcription |
+
+Guard rails are the same as `/api/chat`: tools only ever see `offen` letters,
+and an answer may cite only ids that some tool result contained (one
+corrective retry). The response carries the tool trace (`agent.trace`), shown
+in the UI as "Rechercheschritte"; every run is appended to
+`data/agent-log.jsonl`. Expect 1 step / 3–10 s for count and filter questions
+and 5–6 steps / 70–90 s for open research questions. `AGENT_MAX_STEPS` (8)
+caps the loop.
+
+Corpus fields added for this (rebuild with `npm run build:corpus`; the
+embedded `text` is unchanged, so `build:index` is not needed): `senderIds`,
+`recipientIds`, `senderFemale`, `recipientFemale` (from `people.weiblich`),
+`keywordSubjectGroups` (subject category, from `saches.typ` → `sachgruppes`).
+`keywordPeople` is now populated — letters reference persons through the
+`zitiernames` collection, which the corpus build previously did not resolve.
+
 ## Evaluation
 
 `test/` contains the evaluation harness (question catalog in `Docs/`). Gold sets are
