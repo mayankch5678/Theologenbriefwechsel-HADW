@@ -243,6 +243,7 @@
   .bubble table { border-collapse: collapse; margin: 6px 0; font-size: 0.9rem; }
   .bubble th, .bubble td { border: 1px solid #ddd; padding: 3px 8px; text-align: left; vertical-align: top; }
   .bubble th { background: #f5f5f5; }
+  #jobs { font-size: 0.82rem; color: #7a4a3a; padding: 4px 0 0; }
 </style>
 </head>
 <body>
@@ -257,6 +258,7 @@
     <p>Suche läuft lokal (Ollama), Antwortgenerierung über die DeepSeek-API (Cloud). Jede Antwort ist mit den zugrunde liegenden Briefen belegt — folgen Sie den Links zum Originaleintrag, um sie gegenzuprüfen.</p>
   </header>
   <div id="log"></div>
+  <div id="jobs" hidden></div>
   <div id="outline-tip"></div>
   <form id="form">
     <input id="input" type="text" placeholder="Frage zum Briefarchiv stellen…" autocomplete="off" />
@@ -270,6 +272,31 @@ const form = document.getElementById('form');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('send');
 const agentMode = document.getElementById('agentMode');
+const jobsBox = document.getElementById('jobs');
+
+// A classify_letters call over the whole archive keeps running after the
+// answer; show its progress so the user knows when to ask again.
+let jobsTimer = null;
+function renderJobs(jobs) {
+  const running = (jobs || []).filter((j) => !j.finished);
+  const done = (jobs || []).filter((j) => j.finished);
+  if (!running.length && !done.length) { jobsBox.hidden = true; return; }
+  jobsBox.hidden = false;
+  jobsBox.textContent = [
+    ...running.map((j) => `Hintergrundauftrag läuft: „${j.criterion.slice(0, 60)}…“ ${j.done}/${j.total} Briefe${j.rate ? ` (${j.rate}/s, noch ~${Math.max(1, Math.round((j.total - j.done) / j.rate / 60))} min)` : ''}`),
+    ...done.map((j) => `Hintergrundauftrag fertig: „${j.criterion.slice(0, 60)}…“ (${j.total} Briefe${j.error ? ', abgebrochen: ' + j.error : ''}) – Frage erneut stellen für das vollständige Ergebnis.`),
+  ].join('\n');
+  if (running.length && !jobsTimer) {
+    jobsTimer = setInterval(async () => {
+      try {
+        const r = await fetch('/api/agent/jobs');
+        const { jobs } = await r.json();
+        renderJobs(jobs);
+        if (!jobs.some((j) => !j.finished)) { clearInterval(jobsTimer); jobsTimer = null; }
+      } catch (_) { /* keep polling */ }
+    }, 10000);
+  }
+}
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -526,6 +553,7 @@ form.addEventListener('submit', async (e) => {
       } else {
         addBotMessage(data.answer, data.sources, data.agent);
         chatHistory.push({ role: 'user', content: text }, { role: 'assistant', content: data.answer });
+        if (data.agent && data.agent.jobs) renderJobs(data.agent.jobs);
       }
       return;
     }

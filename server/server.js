@@ -1286,6 +1286,7 @@ app.post("/api/agent", async (req, res) => {
         seenCount: out.seenCount,
         usage: out.usage,
         ms: Date.now() - started,
+        jobs: agent.jobs(),
       },
       sources: out.sources,
     });
@@ -1294,6 +1295,11 @@ app.post("/api/agent", async (req, res) => {
     console.error("Agent failed:", cause);
     res.status(503).json({ error: `Der Agent konnte die Frage nicht bearbeiten (${cause}).`, sources: [] });
   }
+});
+
+// Background classification jobs (classify_letters over a large scope).
+app.get("/api/agent/jobs", (req, res) => {
+  res.json({ jobs: agent ? agent.jobs() : [] });
 });
 
 app.get("/api/health", (req, res) => {

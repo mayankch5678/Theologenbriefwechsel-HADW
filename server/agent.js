@@ -17,9 +17,10 @@
 import { readFile, appendFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { createClassifier } from "./classify.js";
 
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS || 8);
-const TOOL_RESULT_MAX_CHARS = 24000; // hard cap per tool message
+const TOOL_RESULT_MAX_CHARS = 32000; // hard cap per tool message
 const REGEST_SNIPPET = 260;
 const VOLLTEXT_MAX = 8000;
 const PAGE_MAX = 50;
@@ -141,6 +142,33 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "classify_letters",
+      description:
+        "Liest JEDES Regest im gewählten Umfang einzeln mit dem Sprachmodell und ordnet es einem der von dir definierten Labels zu (mit Pflicht-Zitat), dann Zusammenfassung pro Gruppe (Absender …). " +
+        "Für Fragen nach Haltung, Tendenz, Ton, Position oder Vergleich von Autoren/Briefen, die sich aus keinem Schlagwort und keiner Suche ablesen lassen ('Welche Autoren sind eher versöhnlich als abgrenzend?'). " +
+        "Du definierst das Kriterium und 2–5 Labels; 'nicht_bestimmbar' gibt es immer zusätzlich. Ohne filter = ganzes Archiv (~18.000 Regesten, läuft dann als Hintergrundauftrag ~1 h; Ergebnis wird gecacht, ein Zwischenstand kommt sofort). " +
+        "Mit filter (z.B. subject, sender, year) wird nur die Teilmenge gelesen (bis ~300 Briefe sofort).",
+      parameters: {
+        type: "object",
+        properties: {
+          criterion: { type: "string", description: "Was beurteilt werden soll, präzise und auf den Absender bezogen, auf Deutsch. Z.B. 'Zeigt der Absender in diesem Brief eine Haltung zu konfessionellem Ausgleich vs. Abgrenzung?'" },
+          labels: {
+            type: "array",
+            minItems: 2,
+            maxItems: 5,
+            items: { type: "object", properties: { name: { type: "string", description: "kurzer Bezeichner, z.B. versoehnlich" }, description: { type: "string", description: "Wann dieses Label gilt." } }, required: ["name", "description"] },
+          },
+          filter: { type: "object", properties: FILTER_PROPERTIES, description: "Umfang (wie filter_letters). Weglassen = ganzes öffentliches Archiv." },
+          group_by: { type: "string", enum: ["sender", "recipient", "year", "decade", "place_sent", "land_sent"], description: "Zusammenfassung pro … (Standard sender)." },
+          min_letters: { type: "integer", description: "Gruppen mit weniger bestimmbaren Briefen werden nicht aufgeführt (Standard 5)." },
+        },
+        required: ["criterion", "labels"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "regest_issues",
       description:
         "Ergebnisse der Regest-Qualitätsprüfung: ein Batch-Lauf hat jedes editorische Regest auf formale Mängel geprüft — unvollständige/abgebrochene Sätze, doppelte oder fehlende Wörter, Tippfehler. " +
@@ -180,6 +208,7 @@ ARBEITSWEISE
 - Inhaltsfragen in natürlicher Sprache beantwortest du mit search_letters und prüfst wichtige Treffer mit read_letter.
 - Schlagworte (Schlagworte der Editoren) sind das Urteil der Editoren über den Inhalt eines Briefs — ein Brief mit passendem Schlagwort behandelt das Thema, auch wenn das Regest den Begriff nicht wörtlich nennt.
 - Wenn ein Werkzeug nichts liefert, formuliere um oder probiere einen anderen Weg (andere Schreibweise via list_values, anderes Feld), bevor du aufgibst.
+- Fragen nach Haltung/Tendenz/Ton/Position von Autoren oder nach einem Vergleich, der Lesen erfordert ("eher versöhnlich als abgrenzend", "wer äußert sich kritisch über X"): NICHT aus einer Suchstichprobe schließen und NICHT aus Schlagwort-Zählungen (ein Schlagwort nennt das Thema, nicht die Haltung). Stattdessen classify_letters mit einem klaren Kriterium und 2–4 Labels; ohne filter für das ganze Archiv. Nenne in der Antwort: Umfang, wie viele Briefe klassifiziert/bestimmbar sind, pro Autor die Anteile mit Brief-Nummern und Zitaten, und dass die Labels auf dem Regest-Wortlaut beruhen. Bei Status "laeuft" ausdrücklich als Zwischenstand kennzeichnen.
 - "Ausland"/"aus dem Ausland": zwei Wege, beide ausführen und beide Zahlen nennen — (a) Schlagworte "Nachrichten aus …" (list_values/filter_letters mit subject) und (b) die Ortsklassifikation: count_by({by:"land_mentioned", filter:{mentions_foreign:true}}) für die Verteilung nach Ländern und filter_letters({mentions_foreign:true}) für Beispiele. Formale Mängel in Regesten (unvollständige Sätze, Tippfehler) beantwortet regest_issues.
 
 STRIKTE REGELN FÜR DIE ANTWORT
@@ -327,6 +356,8 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
 
   const clampInt = (v, def, max) => Math.max(0, Math.min(max, Number.isFinite(Number(v)) && v !== undefined ? Number(v) : def));
 
+  const classifier = createClassifier({ records, publicIndices, dataDir, client, model, extra, fieldValues });
+
   // ---- tools -----------------------------------------------------------------
   const tools = {
     async search_letters({ query, limit }) {
@@ -409,6 +440,13 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
       }
       const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
       return { feld: field, treffer_gesamt: sorted.length, werte: sorted.slice(0, cap).map(([wert, briefe]) => ({ wert, briefe })) };
+    },
+
+    async classify_letters({ criterion, labels, filter, group_by, min_letters }) {
+      await Promise.all([loadPlaces(), loadRegestIssues()]);
+      const indices = filtered(filter || {});
+      if (!indices.length) return { error: "Der Filter trifft keinen Brief." };
+      return classifier.classify({ criterion, labels, indices, group_by: group_by || "sender", min_letters: clampInt(min_letters, 5, 1000) });
     },
 
     async regest_issues({ art, limit, offset }) {
@@ -630,7 +668,7 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
     return { answer, trace, steps, usage, citationRetry, citedIds: cited, seenCount: seenIds.size, sources };
   }
 
-  return { run, tools, TOOLS };
+  return { run, tools, TOOLS, jobs: classifier.jobs };
 }
 
 function summarize(name, result) {
@@ -644,6 +682,8 @@ function summarize(name, result) {
       return `${result.briefe_im_filter} Briefe im Filter, ${result.briefe_mit_wert} mit Wert, ${result.verschiedene_werte} Werte; Top: ` + (result.gruppen || []).slice(0, 3).map((g) => `${g.wert} (${g.briefe})`).join(", ");
     case "list_values":
       return `${result.treffer_gesamt} Werte; Top: ` + (result.werte || []).slice(0, 3).map((g) => `${g.wert} (${g.briefe})`).join(", ");
+    case "classify_letters":
+      return `${result.status}: ${result.klassifiziert}/${result.briefe_im_umfang} klassifiziert, ${result.gruppen_gesamt} Gruppen; ` + Object.entries(result.verteilung_gesamt || {}).map(([k, v]) => `${k} ${v}`).join(", ");
     case "regest_issues":
       return `${result.briefe_mit_befund} Briefe mit Befund (${result.regesten_geprueft}/${result.regesten_gesamt} Regesten geprüft)`;
     case "read_letter":
