@@ -18,7 +18,7 @@ import { readFile, appendFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { createClassifier } from "./classify.js";
-import { createLlm } from "./llm.js";
+import { createBatchPool } from "./llm.js";
 
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS || 8);
 const TOOL_RESULT_MAX_CHARS = 32000; // hard cap per tool message
@@ -209,7 +209,7 @@ ARBEITSWEISE
 - Inhaltsfragen in natürlicher Sprache beantwortest du mit search_letters und prüfst wichtige Treffer mit read_letter.
 - Schlagworte (Schlagworte der Editoren) sind das Urteil der Editoren über den Inhalt eines Briefs — ein Brief mit passendem Schlagwort behandelt das Thema, auch wenn das Regest den Begriff nicht wörtlich nennt.
 - Wenn ein Werkzeug nichts liefert, formuliere um oder probiere einen anderen Weg (andere Schreibweise via list_values, anderes Feld), bevor du aufgibst.
-- Fragen nach Haltung/Tendenz/Ton/Position von Autoren oder nach einem Vergleich, der Lesen erfordert ("eher versöhnlich als abgrenzend", "wer äußert sich kritisch über X"): NICHT aus einer Suchstichprobe schließen und NICHT aus Schlagwort-Zählungen (ein Schlagwort nennt das Thema, nicht die Haltung). Stattdessen classify_letters mit einem klaren Kriterium und 2–4 Labels; ohne filter für das ganze Archiv. Nenne in der Antwort: Umfang, wie viele Briefe klassifiziert/bestimmbar sind, pro Autor die Anteile mit Brief-Nummern und Zitaten, und dass die Labels auf dem Regest-Wortlaut beruhen. Bei Status "laeuft" ausdrücklich als Zwischenstand kennzeichnen.
+- Fragen nach Haltung/Tendenz/Ton/Position von Autoren oder nach einem Vergleich, der Lesen erfordert ("eher versöhnlich als abgrenzend", "wer äußert sich kritisch über X"): NICHT aus einer Suchstichprobe schließen und NICHT aus Schlagwort-Zählungen (ein Schlagwort nennt das Thema, nicht die Haltung). Stattdessen classify_letters mit einem klaren Kriterium und 2–4 Labels; ohne filter für das ganze Archiv. Pro Frage nur EIN classify_letters-Aufruf — nicht mit umformulierten Kriterien oder Teilfiltern wiederholen (jeder neue Wortlaut ist ein neuer Auftrag, der das Budget halbiert). Nenne in der Antwort: Umfang, wie viele Briefe klassifiziert/bestimmbar sind, pro Autor die Anteile mit Brief-Nummern und Zitaten, und dass die Labels auf dem Regest-Wortlaut beruhen. Bei Status "laeuft" ausdrücklich als Zwischenstand kennzeichnen.
 - "Ausland"/"aus dem Ausland": zwei Wege, beide ausführen und beide Zahlen nennen — (a) Schlagworte "Nachrichten aus …" (list_values/filter_letters mit subject) und (b) die Ortsklassifikation: count_by({by:"land_mentioned", filter:{mentions_foreign:true}}) für die Verteilung nach Ländern und filter_letters({mentions_foreign:true}) für Beispiele. Formale Mängel in Regesten (unvollständige Sätze, Tippfehler) beantwortet regest_issues.
 
 STRIKTE REGELN FÜR DIE ANTWORT
@@ -357,8 +357,7 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
 
   const clampInt = (v, def, max) => Math.max(0, Math.min(max, Number.isFinite(Number(v)) && v !== undefined ? Number(v) : def));
 
-  const batch = createLlm({ role: "batch" });
-  const classifier = createClassifier({ records, publicIndices, dataDir, client: batch.client, model: batch.model, extra: batch.extra, fieldValues });
+  const classifier = createClassifier({ records, publicIndices, dataDir, llms: createBatchPool(), fieldValues });
 
   // ---- tools -----------------------------------------------------------------
   const tools = {

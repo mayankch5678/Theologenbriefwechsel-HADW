@@ -12,7 +12,7 @@
 //   node scripts/checkRegests.js --heuristic-only
 //   CONCURRENCY=10 node scripts/checkRegests.js
 
-import { createLlm } from "../server/llm.js";
+import { createLlm, createBatchPool } from "../server/llm.js";
 import { readFile, appendFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -78,15 +78,17 @@ async function main() {
 
   // One request, several regests -> Map id -> maengel[] (missing ids are
   // retried in a smaller batch by the caller).
-  async function checkMany(rs) {
+  const pool = client ? createBatchPool() : [];
+  async function checkMany(rs, llmIdx = 0) {
     if (!client) return new Map(rs.map((r) => [String(r.id), []]));
+    const llm = pool[llmIdx % pool.length];
     const user = rs.map((r) => `### Brief ${r.id}\n${r.regest}`).join("\n\n");
     let lastErr;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const completion = await client.chat.completions.create({
+        const completion = await llm.client.chat.completions.create({
           ...llm.extra,
-          model: MODEL,
+          model: llm.model,
           temperature: 0,
           max_tokens: 250 * rs.length + 200,
           response_format: { type: "json_object" },
@@ -116,10 +118,10 @@ async function main() {
   const groups = [];
   for (let k = 0; k < todo.length; k += BATCH) groups.push(todo.slice(k, k + BATCH));
   let g = 0;
-  const handle = async (rs) => {
+  const handle = async (rs, llmIdx = 0) => {
     let got;
     try {
-      got = await checkMany(rs);
+      got = await checkMany(rs, llmIdx);
     } catch (err) {
       console.error(`  batch of ${rs.length}: ${String(err?.message || err)}`);
       n += rs.length;
@@ -128,7 +130,7 @@ async function main() {
     const lines = [];
     for (const r of rs) {
       if (!got.has(String(r.id))) continue;
-      const result = { id: String(r.id), heuristik: heuristics(r.regest), maengel: got.get(String(r.id)), model: client ? MODEL : null, at: new Date().toISOString() };
+      const result = { id: String(r.id), heuristik: heuristics(r.regest), maengel: got.get(String(r.id)), model: client ? pool[llmIdx % pool.length].model : null, at: new Date().toISOString() };
       if (result.heuristik.length || result.maengel.length) flagged++;
       lines.push(JSON.stringify(result));
     }
@@ -137,18 +139,18 @@ async function main() {
     const missing = rs.filter((r) => !got.has(String(r.id)));
     if (missing.length && rs.length > 1) {
       const half = Math.ceil(missing.length / 2);
-      await handle(missing.slice(0, half));
-      if (missing.length > half) await handle(missing.slice(half));
+      await handle(missing.slice(0, half), llmIdx);
+      if (missing.length > half) await handle(missing.slice(half), llmIdx);
     } else if (missing.length) n += missing.length;
     if (Math.floor(n / 200) !== Math.floor((n - rs.length) / 200) || n >= todo.length) {
       const rate = n / ((Date.now() - started) / 1000);
       console.log(`  ${n}/${todo.length} (${flagged} flagged, ${rate.toFixed(1)}/s, ~${Math.round((todo.length - n) / rate / 60)} min left)`);
     }
   };
-  const worker = async () => {
-    while (g < groups.length) await handle(groups[g++]);
+  const worker = async (k) => {
+    while (g < groups.length) await handle(groups[g++], k);
   };
-  await Promise.all(Array.from({ length: client ? Math.min(CONCURRENCY, groups.length) : 1 }, worker));
+  await Promise.all(Array.from({ length: client ? Math.min(CONCURRENCY, groups.length) : 1 }, (_, k) => worker(k)));
   console.log(`Done. ${flagged} of ${todo.length} letters flagged. Results in ${OUT}`);
 }
 

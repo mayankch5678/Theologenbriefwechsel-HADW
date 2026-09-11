@@ -45,3 +45,20 @@ export function createLlm({ role = "chat" } = {}) {
   }
   return { client, model, provider: name, extra, role };
 }
+
+// Batch jobs can spread requests over every provider with a key: both
+// DeepSeek and Zhipu limit by request count, so two accounts are twice the
+// throughput. LLM_BATCH_PROVIDER pins a single one.
+export function createBatchPool() {
+  if (process.env.LLM_BATCH_PROVIDER) return [createLlm({ role: "batch" })];
+  const pool = [];
+  for (const name of Object.keys(PROVIDERS)) {
+    if (!process.env[PROVIDERS[name].keyVar]) continue;
+    const saved = process.env.LLM_BATCH_PROVIDER;
+    process.env.LLM_BATCH_PROVIDER = name;
+    pool.push(createLlm({ role: "batch" }));
+    if (saved === undefined) delete process.env.LLM_BATCH_PROVIDER;
+    else process.env.LLM_BATCH_PROVIDER = saved;
+  }
+  return pool.length ? pool : [createLlm({ role: "batch" })];
+}
