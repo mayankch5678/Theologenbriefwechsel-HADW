@@ -72,9 +72,10 @@ const QUESTIONS = [
   {
     id: "q6_versoehnung",
     text: "Welche Briefautoren sind mehr auf konfessionelle (religiöse) Versöhnung und Ausgleich bedacht als auf Abgrenzung?",
-    expectTools: ["count_by", "search_letters"],
-    mustMention: ["Andreae"],
-    minCited: 8,
+    // Must read, not count tags: classify_letters over the archive (cached
+    // after the first full run; a fresh cache makes this an interim answer).
+    expectTools: ["classify_letters"],
+    mustNotMention: ["Soll ich"],
   },
   // --- the retrieval eval's handwritten set, on the agent path --------------
   {

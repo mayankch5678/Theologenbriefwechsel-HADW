@@ -127,6 +127,7 @@ public indexes and decides the next step itself (`server/agent.js`):
 | `filter_letters` | metadata filter over the whole public archive (sender, recipient, years, places, subject, subject category, female sender, regest contains …) |
 | `count_by` | group-by count over the archive or a filtered subset (e.g. subjects of category *Ereignis*) |
 | `list_values` | exact spellings of subjects / names / places with letter counts |
+| `classify_letters` | reads every regest in scope with a criterion and labels the agent defines at question time, quote required, aggregated per author; cached; large scopes run as a background job (`server/classify.js`) |
 | `regest_issues` | findings of the offline regest quality check (see below) |
 | `read_letter` | one letter in full: metadata, regest, tags with category, commentary, transcription |
 
@@ -137,6 +138,19 @@ in the UI as "Rechercheschritte"; every run is appended to
 `data/agent-log.jsonl`. Expect 1 step / 3–10 s for count and filter questions
 and 5–6 steps / 70–90 s for open research questions. `AGENT_MAX_STEPS` (8)
 caps the loop.
+
+`classify_letters` is what answers questions about stance, tone or tendency
+("which authors lean towards reconciliation rather than demarcation"): no
+tag and no search sample can answer those — a letter tagged *Versöhnung* may
+mock reconciliation, and a 30-letter sample of untagged regests still showed
+a stance in 4 of them. So the agent defines a criterion and 2–5 labels, every
+regest in scope is read once (one model call, label + mandatory quote), and
+the result is aggregated per author with shares and examples. Up to ~300
+letters run inside the call; the whole archive (18k regests) runs as a
+background job of about an hour, the answer states the interim coverage, and
+the finished result is cached under `data/classify/` so the next question with
+the same criterion is instant. Progress: `GET /api/agent/jobs`, also shown
+under the chat.
 
 Two offline batch jobs feed the agent with what the archive itself does not
 record (both resumable, both call DeepSeek, both write to `data/`):
