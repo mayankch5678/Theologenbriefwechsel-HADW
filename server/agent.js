@@ -192,7 +192,7 @@ STRIKTE REGELN FÜR DIE ANTWORT
 7. Stelle keine Rückfragen und biete keine weiteren Schritte an ("Soll ich …?"). Wenn eine Prüfung sinnvoll ist, führe sie selbst mit den Werkzeugen aus, bevor du antwortest.
 8. Schreibe die Antwort erst, wenn alle Werkzeugaufrufe abgeschlossen sind — kein Antworttext in derselben Nachricht wie ein Werkzeugaufruf. Die Antwort ist eine einzige, vollständige Nachricht.`;
 
-export async function createAgent({ records, publicIndices, dataDir, hybridSearch, client, model, extractCitedIds, normalize }) {
+export async function createAgent({ records, publicIndices, dataDir, hybridSearch, client, model, extra = {}, extractCitedIds, normalize }) {
   // ---- static lookups over public letters ----------------------------------
   const byId = new Map();
   for (const i of publicIndices) byId.set(String(records[i].id), i);
@@ -481,6 +481,7 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
     const attempt = async (n) => {
       try {
         return await client.chat.completions.create({
+          ...extra,
           model,
           temperature: 0.2,
           max_tokens: 4096,
@@ -528,7 +529,14 @@ export async function createAgent({ records, publicIndices, dataDir, hybridSearc
       }
       steps++;
       if (msg.content && msg.content.trim().length >= 200) partials.push(msg.content.trim());
-      messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: msg.tool_calls });
+      // Reasoning models want their own reasoning echoed back on the next
+      // turn of a tool loop; harmless for models without it.
+      messages.push({
+        role: "assistant",
+        content: msg.content ?? "",
+        tool_calls: msg.tool_calls,
+        ...(msg.reasoning_content ? { reasoning_content: msg.reasoning_content } : {}),
+      });
       for (const call of msg.tool_calls) {
         const name = call.function?.name;
         let args = {};

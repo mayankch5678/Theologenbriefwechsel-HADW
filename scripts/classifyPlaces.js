@@ -10,7 +10,7 @@
 //   node scripts/classifyPlaces.js
 //   node scripts/classifyPlaces.js --limit 80     # smoke test
 
-import OpenAI from "openai";
+import { createLlm } from "../server/llm.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -22,7 +22,8 @@ const ENV_FILE = path.join(__dirname, "..", ".env");
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const OUT = path.join(DATA_DIR, "places.json");
-const MODEL = process.env.CHAT_MODEL || "deepseek-flash";
+const llm = createLlm();
+const MODEL = llm.model;
 const BATCH = 40;
 const CONCURRENCY = Number(process.env.CONCURRENCY || 4);
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split("=")[1];
@@ -53,7 +54,7 @@ async function main() {
   if (LIMIT) todo = todo.slice(0, LIMIT);
   console.log(`${names.size} distinct place names, ${Object.keys(existing).length} classified, ${todo.length} to do (${MODEL}).`);
 
-  const client = new OpenAI({ baseURL: "https://api.deepseek.com", apiKey: process.env.DEEPSEEK_API_KEY });
+  const client = llm.client;
   const batches = [];
   for (let i = 0; i < todo.length; i += BATCH) batches.push(todo.slice(i, i + BATCH));
 
@@ -69,6 +70,7 @@ async function main() {
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           const completion = await client.chat.completions.create({
+            ...llm.extra,
             model: MODEL,
             temperature: 0,
             max_tokens: 4000,

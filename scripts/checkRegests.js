@@ -12,7 +12,7 @@
 //   node scripts/checkRegests.js --heuristic-only
 //   CONCURRENCY=10 node scripts/checkRegests.js
 
-import OpenAI from "openai";
+import { createLlm } from "../server/llm.js";
 import { readFile, appendFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -24,7 +24,8 @@ const ENV_FILE = path.join(__dirname, "..", ".env");
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const OUT = path.join(DATA_DIR, "regest-check.jsonl");
-const MODEL = process.env.CHAT_MODEL || "deepseek-flash";
+const llm = createLlm();
+const MODEL = llm.model;
 const CONCURRENCY = Number(process.env.CONCURRENCY || 8);
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split("=")[1];
 const LIMIT = Number(arg("limit") || 0);
@@ -70,7 +71,7 @@ async function main() {
   if (LIMIT) todo = todo.slice(0, LIMIT);
   console.log(`${letters.length} public letters with a regest, ${done.size} already checked, ${todo.length} to do (model: ${HEURISTIC_ONLY ? "none" : MODEL}, concurrency ${CONCURRENCY}).`);
 
-  const client = HEURISTIC_ONLY ? null : new OpenAI({ baseURL: "https://api.deepseek.com", apiKey: process.env.DEEPSEEK_API_KEY });
+  const client = HEURISTIC_ONLY ? null : llm.client;
 
   async function check(r) {
     const heur = heuristics(r.regest);
@@ -80,6 +81,7 @@ async function main() {
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           const completion = await client.chat.completions.create({
+            ...llm.extra,
             model: MODEL,
             temperature: 0,
             max_tokens: 500,

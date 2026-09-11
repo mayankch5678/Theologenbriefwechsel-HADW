@@ -22,7 +22,7 @@ restored local MongoDB `letters` database.
 | Component | Tool |
 |---|---|
 | Embeddings | Ollama / `bge-m3` (local) |
-| Generation | DeepSeek API (`deepseek-flash`, cloud) |
+| Generation | Zhipu `glm-5.3-flash` (default) or DeepSeek `deepseek-flash` — `server/llm.js`, `LLM_PROVIDER` |
 | Search index | Flat binary (`embeddings.bin`), brute-force cosine |
 | Rerank | `BAAI/bge-reranker-v2-m3` cross-encoder sidecar (optional) |
 | Server | Express.js, port 5055 |
@@ -56,10 +56,10 @@ ollama pull bge-m3
 cp .env.example .env
 ```
 
-Fill in your key:
+Fill in your key (default provider is Zhipu; `LLM_PROVIDER=deepseek` switches to DeepSeek with `DEEPSEEK_API_KEY`):
 
 ```
-DEEPSEEK_API_KEY=sk-your-key
+ZHIPU_API_KEY=your-key
 ```
 
 Build the corpus and index:

@@ -10,12 +10,12 @@
 
 import express from "express";
 import cors from "cors";
-import OpenAI from "openai";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { createAgent } from "./agent.js";
+import { createLlm } from "./llm.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "..", "data");
@@ -28,7 +28,8 @@ if (existsSync(ENV_FILE)) {
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const EMBED_MODEL = process.env.EMBED_MODEL || "bge-m3";
-const CHAT_MODEL = process.env.CHAT_MODEL || "deepseek-flash";
+const llm = createLlm();
+const CHAT_MODEL = llm.model;
 const TOP_K = Number(process.env.TOP_K || 30); // embedding-only fallback path
 // When the keyword path already produced hits (curated tags / names / dates
 // answered the question), the embedding path is only a supplement — letting
@@ -78,17 +79,7 @@ const MAX_SUBJECT_BUCKET = Number(process.env.MAX_SUBJECT_BUCKET || 150);
 const MIN_SCORE = Number(process.env.MIN_SCORE || 0.5);
 const PORT = Number(process.env.PORT || 5055);
 
-if (!process.env.DEEPSEEK_API_KEY) {
-  console.warn(
-    "WARNING: DEEPSEEK_API_KEY is not set. Copy .env.example to .env and add your key, " +
-      "or export it in your shell before starting the server."
-  );
-}
-
-const deepseek = new OpenAI({
-  baseURL: "https://api.deepseek.com",
-  apiKey: process.env.DEEPSEEK_API_KEY,
-});
+const deepseek = llm.client; // name kept: the generation calls below predate the provider switch
 
 let records = [];
 let vectors = null;
@@ -917,6 +908,7 @@ async function rewriteQuestion(question, history) {
     .join("\n");
   try {
     const completion = await deepseek.chat.completions.create({
+      ...llm.extra,
       model: CHAT_MODEL,
       temperature: 0,
       max_tokens: 200,
@@ -972,6 +964,7 @@ async function generateAnswer(question, context, allowedIds, evidenceIds = [], h
   const complete = async (msgs, attempt = 0) => {
     try {
       const completion = await deepseek.chat.completions.create({
+        ...llm.extra,
         model: CHAT_MODEL,
         temperature: 0.3,
         // Enumerations over 40+ letters were being cut off at ~25 entries.
@@ -1086,11 +1079,11 @@ app.post("/api/chat", async (req, res) => {
         // precisely — "Connection error." gave the user no way to tell
         // whether search, the model, or the network was at fault.
         const cause = err?.cause?.cause?.code || err?.cause?.code || err?.status || err?.message;
-        console.error("DeepSeek generation failed:", cause);
+        console.error("Generation failed:", cause);
         return res.status(503).json({
           error:
             `Die Suche hat ${hits.length} Briefe gefunden, aber der Antwortdienst (DeepSeek) ` +
-            `ist derzeit nicht erreichbar (${cause}). Bitte Netzwerk/DNS prüfen und erneut versuchen.`,
+            `ist derzeit nicht erreichbar (${cause}). Bitte Netzwerk/DNS prüfen und erneut versuchen.`.replace("(DeepSeek)", `(${llm.provider})`),
           sources: [],
         });
       }
@@ -1313,6 +1306,7 @@ app.get("/api/health", (req, res) => {
     chunks: chunks.length,
     rerank: rerankEnabled,
     chatModel: CHAT_MODEL,
+    llmProvider: llm.provider,
     embedModel: EMBED_MODEL,
   });
 });
@@ -1327,6 +1321,7 @@ agent = await createAgent({
   hybridSearch,
   client: deepseek,
   model: CHAT_MODEL,
+  extra: llm.extra,
   extractCitedIds,
   normalize,
 });
