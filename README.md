@@ -22,7 +22,7 @@ restored local MongoDB `letters` database.
 | Component | Tool |
 |---|---|
 | Embeddings | Ollama / `bge-m3` (local) |
-| Generation | DeepSeek API (`deepseek-chat`, cloud) |
+| Generation | DeepSeek API (`deepseek-flash`, cloud) |
 | Search index | Flat binary (`embeddings.bin`), brute-force cosine |
 | Rerank | `BAAI/bge-reranker-v2-m3` cross-encoder sidecar (optional) |
 | Server | Express.js, port 5055 |

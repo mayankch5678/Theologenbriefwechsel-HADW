@@ -24,7 +24,7 @@ const ENV_FILE = path.join(__dirname, "..", ".env");
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const OUT = path.join(DATA_DIR, "regest-check.jsonl");
-const MODEL = process.env.CHAT_MODEL || "deepseek-chat";
+const MODEL = process.env.CHAT_MODEL || "deepseek-flash";
 const CONCURRENCY = Number(process.env.CONCURRENCY || 8);
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split("=")[1];
 const LIMIT = Number(arg("limit") || 0);

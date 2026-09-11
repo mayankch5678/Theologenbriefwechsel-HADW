@@ -2,7 +2,7 @@
 // Retrieval: brute-force cosine similarity over locally computed embeddings
 // (embedding model runs locally via Ollama — bge-m3 is small enough for
 // 8GB of unified memory).
-// Generation: DeepSeek API (deepseek-chat) — the retrieved context and
+// Generation: DeepSeek API (deepseek-flash) — the retrieved context and
 // question are sent to DeepSeek's cloud endpoint to produce the answer.
 // Every answer is grounded in retrieved letters and returns their source
 // citations (thbw.hadw-bw.de URL + regest/CMIF excerpt) so a researcher can
@@ -28,7 +28,7 @@ if (existsSync(ENV_FILE)) {
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const EMBED_MODEL = process.env.EMBED_MODEL || "bge-m3";
-const CHAT_MODEL = process.env.CHAT_MODEL || "deepseek-chat";
+const CHAT_MODEL = process.env.CHAT_MODEL || "deepseek-flash";
 const TOP_K = Number(process.env.TOP_K || 30); // embedding-only fallback path
 // When the keyword path already produced hits (curated tags / names / dates
 // answered the question), the embedding path is only a supplement — letting
