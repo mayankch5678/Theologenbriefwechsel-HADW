@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:," />
 <title>ThBw Briefarchiv – Chatbot (Prototyp)</title>
 <style>
   :root {
@@ -31,6 +32,105 @@
     flex-direction: column;
     height: 100vh;
   }
+  aside.suggestions {
+    width: 250px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    padding: 20px 14px;
+    overflow-y: auto;
+    height: 100vh;
+    box-sizing: border-box;
+  }
+  aside.suggestions h2 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  aside.suggestions button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    cursor: pointer;
+  }
+  aside.suggestions button:hover { border-color: var(--accent); color: var(--accent); }
+  aside.suggestions details { margin-bottom: 10px; }
+  aside.suggestions summary {
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 8px;
+    user-select: none;
+  }
+  aside.suggestions summary:hover { color: var(--accent); }
+  @media (max-width: 900px) { aside.suggestions { display: none; } }
+  /* Conversation outline: one tick per asked question. No border, no
+     expansion — hovering a tick pops a floating label next to it, clicking
+     jumps to that question. */
+  nav.outline {
+    width: 26px;
+    flex-shrink: 0;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 18px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  nav.outline button.outline-entry {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 5px 0;
+    cursor: pointer;
+  }
+  nav.outline button.outline-entry .tick {
+    width: 14px;
+    height: 2px;
+    background: var(--muted);
+    border-radius: 1px;
+  }
+  nav.outline button.outline-entry:hover .tick { background: var(--accent); height: 3px; }
+  #outline-tip {
+    position: fixed;
+    display: none;
+    z-index: 50;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(43,38,32,0.12);
+    padding: 7px 12px;
+    font-size: 0.82rem;
+    color: var(--ink);
+    max-width: 360px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+  }
+  @media (max-width: 900px) { nav.outline { display: none; } }
+  /* Markdown inside answer bubbles */
+  .bubble p { margin: 0 0 0.6em; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble ol, .bubble ul { margin: 0.3em 0 0.6em; padding-left: 1.4em; }
+  .bubble li { margin-bottom: 0.35em; }
+  .bubble a { color: var(--accent); }
+  .bubble code { background: #f2ede4; padding: 0 3px; border-radius: 3px; font-size: 0.85em; }
   header {
     padding: 20px 24px 14px;
     border-bottom: 1px solid var(--border);
@@ -136,12 +236,18 @@
 </style>
 </head>
 <body>
+<aside class="suggestions" id="suggestions">
+  <h2>Beispielfragen</h2>
+</aside>
+<nav class="outline" id="outline" aria-label="Gestellte Fragen">
+</nav>
 <div class="app">
   <header>
     <h1>ThBw Briefarchiv – Chatbot (Prototyp)</h1>
     <p>Suche läuft lokal (Ollama), Antwortgenerierung über die DeepSeek-API (Cloud). Jede Antwort ist mit den zugrunde liegenden Briefen belegt — folgen Sie den Links zum Originaleintrag, um sie gegenzuprüfen.</p>
   </header>
   <div id="log"></div>
+  <div id="outline-tip"></div>
   <form id="form">
     <input id="input" type="text" placeholder="Frage zum Briefarchiv stellen…" autocomplete="off" />
     <button id="send" type="submit">Senden</button>
@@ -160,18 +266,102 @@ function el(tag, cls, text) {
   return e;
 }
 
+// Minimal Markdown renderer for the answer bubbles — the model emits
+// **bold**, numbered/dashed lists and inline code. Escapes HTML first, so
+// nothing from the model is ever interpreted as markup. Brief numbers
+// become links to the archive record.
+function renderMarkdown(md) {
+  const esc = md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const inline = (s) => s
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/Brief (\d{3,6})(?!\d)/g, '<a href="https://thbw.hadw-bw.de/brief/$1" target="_blank" rel="noopener">Brief $1</a>');
+  const lines = esc.split('\n');
+  const out = [];
+  let list = null; // 'ol' | 'ul' | null
+  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const line of lines) {
+    const olm = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    const ulm = line.match(/^\s*[-•*]\s+(.*)$/);
+    if (olm) {
+      if (list !== 'ol') { closeList(); out.push('<ol>'); list = 'ol'; }
+      out.push(`<li>${inline(olm[1])}</li>`);
+    } else if (ulm) {
+      if (list !== 'ul') { closeList(); out.push('<ul>'); list = 'ul'; }
+      out.push(`<li>${inline(ulm[1])}</li>`);
+    } else {
+      closeList();
+      if (line.trim()) out.push(`<p>${inline(line)}</p>`);
+    }
+  }
+  closeList();
+  return out.join('');
+}
+
+const outline = document.getElementById('outline');
+const outlineTip = document.getElementById('outline-tip');
+
 function addUserMessage(text) {
   const msg = el('div', 'msg user');
   msg.appendChild(el('div', 'bubble', text));
   log.appendChild(msg);
   log.scrollTop = log.scrollHeight;
+  // Outline entry: tick when collapsed, question text on hover, click jumps
+  // back to this question (the answer follows right below it).
+  const entry = el('button', 'outline-entry');
+  entry.type = 'button';
+  entry.appendChild(el('span', 'tick'));
+  entry.addEventListener('click', () => {
+    log.scrollTop = msg.offsetTop - log.offsetTop - 8;
+  });
+  // Floating label next to the tick (position:fixed escapes the narrow
+  // scrolling column, which would clip an absolutely positioned tooltip).
+  entry.addEventListener('mouseenter', () => {
+    const r = entry.getBoundingClientRect();
+    outlineTip.textContent = text;
+    outlineTip.style.left = (r.right + 10) + 'px';
+    outlineTip.style.top = r.top + 'px';
+    outlineTip.style.display = 'block';
+  });
+  entry.addEventListener('mouseleave', () => { outlineTip.style.display = 'none'; });
+  outline.appendChild(entry);
 }
 
+// Only the letters that were actually in the model's context are shown as
+// the evidence for the answer; further retrieval candidates the model never
+// saw are collapsed separately, so the source cards can't overstate what
+// the answer is based on.
 function addBotMessage(answer, sources) {
   const msg = el('div', 'msg bot');
-  msg.appendChild(el('div', 'bubble', answer));
+  const bubble = el('div', 'bubble');
+  bubble.innerHTML = renderMarkdown(answer);
+  msg.appendChild(bubble);
 
-  if (sources && sources.length) {
+  const cited = (sources || []).filter((s) => s.inContext !== false);
+  const extra = (sources || []).filter((s) => s.inContext === false);
+
+  if (cited.length) {
+    msg.appendChild(renderSourceList(cited));
+  }
+  if (extra.length) {
+    const det = document.createElement('details');
+    det.appendChild(el('summary', 'status', `Weitere Kandidaten aus der Suche (${extra.length}) – nicht in der Antwort berücksichtigt`));
+    det.appendChild(renderSourceList(extra));
+    msg.appendChild(det);
+  }
+
+  log.appendChild(msg);
+  // Scroll to the TOP of the answer, not the bottom of the log: the reader
+  // starts at the answer and scrolls down into the source cards. Explicit
+  // container scroll after layout — scrollIntoView left the view stranded
+  // mid-list when the answer was taller than the viewport.
+  requestAnimationFrame(() => {
+    log.scrollTop = msg.offsetTop - log.offsetTop - 8;
+  });
+}
+
+function renderSourceList(sources) {
     const box = el('div', 'sources');
     sources.forEach((s, i) => {
       const card = el('div', 'source');
@@ -188,11 +378,28 @@ function addBotMessage(answer, sources) {
       card.appendChild(head);
 
       card.appendChild(el('div', 'meta', s.long));
+      // Why this letter is in the result — the same "Treffer" line the
+      // model sees, so a researcher can tell a curated-tag match from a
+      // merely similar-sounding embedding neighbour.
+      if (s.reasons && s.reasons.length) {
+        card.appendChild(el('div', 'meta', 'Treffer: ' + s.reasons.join('; ')));
+      }
 
       if (s.hasRegest) {
         card.appendChild(el('div', 'snippet', s.regest));
       } else {
-        card.appendChild(el('div', 'snippet', '(Nur Metadaten – kein Regest/Volltext im Archiv erfasst.)'));
+        card.appendChild(el('div', 'snippet', '(Nur Metadaten – automatisch generierte Zusammenfassung, kein editorisches Regest.)'));
+      }
+      // The transcription/commentary passage that matched the question —
+      // primary-source evidence the reader can check against the regest.
+      if (s.passage && s.passage.text) {
+        const det = document.createElement('details');
+        det.className = 'cmif';
+        det.appendChild(el('summary', null, s.passage.kind === 'volltext' ? 'Treffer-Passage aus der Transkription' : 'Treffer-Passage aus der Erläuterung'));
+        const pre = document.createElement('pre');
+        pre.textContent = s.passage.text;
+        det.appendChild(pre);
+        card.appendChild(det);
       }
 
       const det = document.createElement('details');
@@ -206,32 +413,85 @@ function addBotMessage(answer, sources) {
 
       box.appendChild(card);
     });
-    msg.appendChild(box);
-  }
-
-  log.appendChild(msg);
-  log.scrollTop = log.scrollHeight;
+    return box;
 }
+
+// The sidebar shows the full evaluation question set, grouped by the
+// retrieval path that answers it, served by the API so it always matches
+// the current eval fixtures. First group open, the rest collapsed.
+(async () => {
+  const box = document.getElementById('suggestions');
+  try {
+    const res = await fetch('/api/questions');
+    const { groups } = await res.json();
+    groups.forEach((g, gi) => {
+      const det = document.createElement('details');
+      if (gi === 0) det.open = true;
+      const sum = el('summary', null, `${g.title} (${g.questions.length})`);
+      det.appendChild(sum);
+      for (const q of g.questions) {
+        const b = el('button', null, q);
+        b.type = 'button';
+        b.addEventListener('click', () => {
+          input.value = q;
+          form.requestSubmit();
+        });
+        det.appendChild(b);
+      }
+      box.appendChild(det);
+    });
+  } catch (e) {
+    box.appendChild(el('p', 'status', 'Beispielfragen konnten nicht geladen werden.'));
+  }
+})();
+
+// Prior turns are sent with each question so the server can resolve
+// follow-ups ("davon", "der zweite Brief") before retrieval.
+const chatHistory = [];
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
+  const historyPayload = chatHistory.slice(-6);
   addUserMessage(text);
   input.value = '';
   sendBtn.disabled = true;
 
   const statusMsg = el('div', 'msg bot');
-  const statusBubble = el('div', 'bubble status', 'Durchsuche Archiv und formuliere Antwort…');
+  const statusBubble = el('div', 'bubble status', 'Durchsuche Archiv…');
   statusMsg.appendChild(statusBubble);
   log.appendChild(statusMsg);
   log.scrollTop = log.scrollHeight;
 
   try {
+    // Two phases so the page never sits blank for 20 s: retrieval answers in
+    // about a second and tells the user what was found; generation follows.
+    // On follow-up questions the raw text is not what will be searched (the
+    // server rewrites it first), so the preview count would mislead — skip it.
+    if (historyPayload.length === 0) {
+      try {
+        const pre = await fetch('/api/retrieve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text }),
+        });
+        const found = await pre.json();
+        const n = found.sources ? found.sources.length : 0;
+        statusBubble.textContent = n
+          ? `${n} Brief${n === 1 ? '' : 'e'} gefunden – formuliere Antwort (ca. 10–30 s)…`
+          : 'Kein passender Brief gefunden – formuliere Antwort…';
+      } catch (_) {
+        statusBubble.textContent = 'Durchsuche Archiv und formuliere Antwort…';
+      }
+    } else {
+      statusBubble.textContent = 'Durchsuche Archiv und formuliere Antwort (ca. 10–30 s)…';
+    }
+
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: text, history: historyPayload }),
     });
     const data = await res.json();
     log.removeChild(statusMsg);
@@ -239,6 +499,7 @@ form.addEventListener('submit', async (e) => {
       addBotMessage('Fehler: ' + (data.error || res.statusText), []);
     } else {
       addBotMessage(data.answer, data.sources);
+      chatHistory.push({ role: 'user', content: text }, { role: 'assistant', content: data.answer });
     }
   } catch (err) {
     log.removeChild(statusMsg);

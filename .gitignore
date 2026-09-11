@@ -4,5 +4,20 @@ node_modules/
 # Generated artefacts — rebuild with `npm run build:corpus` / `npm run build:index`.
 data/embeddings.bin
 data/corpus.jsonl
+data/fulltext.jsonl
+data/chunks.jsonl
+data/chunk_embeddings.bin
 
 *.bak
+
+# Per-run eval output — baseline.json and fixtures/ ARE committed.
+test/results-latest.json
+test/review-latest.md
+rerank/.venv/
+
+# Local working notes (Chinese) — not for the shared repo.
+local-docs/
+
+# Raw demo recordings stay local; the compressed cut is committed.
+Demo/*
+!Demo/demo-2026-08-31.mp4

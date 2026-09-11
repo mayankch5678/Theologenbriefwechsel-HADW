@@ -1,0 +1,15 @@
+{
+  "name": "olevian_an_bullinger",
+  "description": "Letters sent by (any) Olevian to (any) Bullinger",
+  "derivedFrom": {
+    "field": "verfasser/adressat nameMitAmt.combi",
+    "pattern": "Olevian -> Bullinger"
+  },
+  "generatedAt": "2026-08-21T11:37:38.374Z",
+  "offen": [
+    "18494",
+    "18678",
+    "18734"
+  ],
+  "intern": []
+}

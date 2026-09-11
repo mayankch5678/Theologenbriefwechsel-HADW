@@ -7,7 +7,12 @@
   "scripts": {
     "build:corpus": "node scripts/buildCorpus.js",
     "build:index": "node scripts/buildIndex.js",
-    "start": "node server/server.js"
+    "build:gold": "node test/buildGoldSets.js",
+    "build:questions": "node test/generateQuestions.js",
+    "eval": "node test/eval.js",
+    "eval:full": "node test/eval.js --full",
+    "start": "node server/server.js",
+    "build:chunks": "node scripts/buildChunkIndex.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

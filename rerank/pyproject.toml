@@ -1,0 +1,11 @@
+[project]
+name = "thbw-rerank"
+version = "0.1.0"
+description = "Cross-encoder rerank sidecar (BAAI/bge-reranker-v2-m3) for the ThBw RAG prototype"
+requires-python = ">=3.11"
+dependencies = [
+    "sentence-transformers>=3.0",
+    "torch>=2.2",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
