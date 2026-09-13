@@ -127,9 +127,9 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
       const map = await mapLabels(meta.labels, labels);
       if (!map) continue;
       const lines = existsSync(path.join(dir, `${meta.key}.jsonl`)) ? (await readFile(path.join(dir, `${meta.key}.jsonl`), "utf8")).split("\n").filter(Boolean).length : 0;
-      if (!best || lines > best.lines) best = { key: meta.key, lines, map };
+      if (!best || lines > best.lines) best = { key: meta.key, lines, map, labels: meta.labels, criterion: meta.criterion };
     }
-    return best ? { key: best.key, map: best.map } : { key: exact, map: null };
+    return best ? { key: best.key, map: best.map, labels: best.labels, criterion: best.criterion } : { key: exact, map: null };
   }
 
   async function readCache(key) {
@@ -149,13 +149,13 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
   }
 
   function prompt(criterion, labels) {
-    const list = [...labels.map((l) => `- "${l.name}": ${l.description}`), `- "${NO_LABEL}": das Regest gibt dazu nichts her (berichtet nur Inhalte/Ereignisse, oder der Brief betrifft die Frage gar nicht).`].join("\n");
+    const list = [...labels.map((l) => `- "${l.name}": ${l.description}`), `- "${NO_LABEL}": nur wenn sich keines der Labels anwenden lässt (kein Regest-Wortlaut, der eines der Labels stützt).`].join("\n");
     return (
       `Du liest das editorische Regest (Zusammenfassung der Editoren) eines Briefs aus dem Briefarchiv der Theologenbriefwechsel (Südwesten des Reichs, 1550–1620). ` +
       `Beurteile AUSSCHLIESSLICH anhand des Regest-Wortlauts — kein eigenes historisches Wissen, keine Vermutung über den Absender.\n\n` +
       `Kriterium: ${criterion}\n\nMögliche Labels:\n${list}\n\n` +
-      `Jedes Label außer "${NO_LABEL}" muss mit einem wörtlichen Zitat aus dem jeweiligen Regest belegt werden (höchstens 15 Wörter). ` +
-      `Ohne belegendes Zitat: "${NO_LABEL}". Im Zweifel "${NO_LABEL}".\n` +
+      `Belege jedes Label mit einem wörtlichen Zitat aus dem jeweiligen Regest (höchstens 15 Wörter); Labels für eine Haltung/Tendenz brauchen das Zitat zwingend, sonst gilt "${NO_LABEL}". ` +
+      `Wähle "${NO_LABEL}" nur, wenn wirklich kein Label passt.\n` +
       `Du erhältst mehrere Regesten, jedes mit seiner Brief-Nummer. Beurteile jedes für sich. ` +
       `Antworte NUR mit JSON: {"ergebnisse":[{"id":"<Brief-Nummer>","label":"<Label>","zitat":"<wörtlich aus dem Regest oder leer>"}, …]} — genau ein Eintrag pro Brief-Nummer, keine weiteren Felder.`
     );
@@ -196,8 +196,11 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
           let label = typeof e.label === "string" ? e.label.trim() : NO_LABEL;
           if (!allowed.has(label)) label = NO_LABEL;
           const zitat = typeof e.zitat === "string" ? e.zitat.trim().slice(0, 240) : "";
-          if (label !== NO_LABEL && !zitat) label = NO_LABEL;
-          out.set(id, { id, label, zitat, model });
+          // A label without a quote is kept but marked unproven: neutral
+          // letters rarely have anything to quote, and forcing them to
+          // nicht_bestimmbar inflated that bucket to ~50%. Shares and
+          // examples only ever use proven labels.
+          out.set(id, { id, label, zitat, belegt: label === NO_LABEL ? false : Boolean(zitat), model });
         }
         return out;
       } catch (err) {
@@ -211,7 +214,7 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
 
   // Classifies `todo` (record indices) into the cache file; shared by the
   // synchronous path and the background job.
-  async function runBatch(key, todo, criterion, labels, job, toOld = (x) => x) {
+  async function runBatch(key, todo, criterion, labels, job) {
     await mkdir(dir, { recursive: true });
     const file = path.join(dir, `${key}.jsonl`);
     const system = prompt(criterion, labels);
@@ -223,7 +226,7 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
     const handle = async (rs, llm) => {
       try {
         const got = await classifyMany(rs, system, allowed, llm);
-        const lines = rs.filter((r) => got.has(String(r.id))).map((r) => JSON.stringify({ ...got.get(String(r.id)), label: toOld(got.get(String(r.id)).label) }));
+        const lines = rs.filter((r) => got.has(String(r.id))).map((r) => JSON.stringify(got.get(String(r.id))));
         if (lines.length) await appendFile(file, lines.join("\n") + "\n");
         const missing = rs.filter((r) => !got.has(String(r.id)));
         if (job) job.done += rs.length - missing.length;
@@ -255,6 +258,7 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
   function aggregate(cache, indices, labels, groupBy, minLetters, toNew = (x) => x, sortBy = "count") {
     const labelNames = [...labels.map((l) => l.name), NO_LABEL];
     const totals = Object.fromEntries(labelNames.map((n) => [n, 0]));
+    const unproven = {};
     const groups = new Map();
     let classified = 0;
     for (const i of indices) {
@@ -262,14 +266,16 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
       const raw = cache.get(String(r.id));
       if (!raw) continue;
       const c = { ...raw, label: labelNames.includes(toNew(raw.label)) ? toNew(raw.label) : NO_LABEL };
+      const proven = c.label !== NO_LABEL && (raw.belegt ?? Boolean(raw.zitat));
       classified++;
       totals[c.label] = (totals[c.label] || 0) + 1;
+      if (c.label !== NO_LABEL && !proven) unproven[c.label] = (unproven[c.label] || 0) + 1;
       for (const g of new Set(fieldValues(r, groupBy))) {
         let entry = groups.get(g);
         if (!entry) groups.set(g, (entry = { wert: g, briefe: 0, bestimmbar: 0, labels: Object.fromEntries(labelNames.map((n) => [n, 0])), beispiele: {} }));
         entry.briefe++;
         entry.labels[c.label]++;
-        if (c.label !== NO_LABEL) {
+        if (proven) {
           entry.bestimmbar++;
           const ex = (entry.beispiele[c.label] ||= []);
           if (ex.length < EXAMPLES_PER_LABEL) ex.push({ id: String(r.id), datum: r.dateDisplay || r.dateIso, zitat: c.zitat });
@@ -288,7 +294,7 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
     if (sortBy !== "count" && labels.some((l) => l.name === sortBy)) {
       rows.sort((a, b) => b.anteile[sortBy] - a.anteile[sortBy] || b.bestimmbar - a.bestimmbar);
     }
-    return { classified, totals, gruppen_gesamt: rows.length, gruppen: rows.slice(0, GROUPS_MAX) };
+    return { classified, totals, unproven, gruppen_gesamt: rows.length, gruppen: rows.slice(0, GROUPS_MAX) };
   }
 
   async function classify({ criterion, labels, indices, group_by = "sender", min_letters = 5, sort_by = "count", wait = true }) {
@@ -300,10 +306,15 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
       .map((l) => ({ name: l.name.trim().replace(/\s+/g, "_").toLowerCase(), description: l.description.trim() }))
       .filter((l) => l.name !== NO_LABEL && !/^(neutral|unklar|unbestimmt|keine)$/.test(l.name)); // always present implicitly
     if (labels.length < 2) return { error: "mindestens 2 inhaltliche Labels nötig (nicht_bestimmbar gibt es immer zusätzlich)" };
-    const { key, map } = await resolveKey(criterion, labels);
+    const resolved = await resolveKey(criterion, labels);
+    const { key, map } = resolved;
     const toNew = map ? (x) => map[x] ?? x : (x) => x;
-    const inverse = map ? Object.fromEntries(Object.entries(map).filter(([, n]) => n !== NO_LABEL).map(([o, n]) => [n, o])) : null;
-    const toOld = inverse ? (x) => inverse[x] ?? x : (x) => x;
+    // A reused cache keeps ITS label scheme and criterion for every further
+    // letter (one prompt for the whole file); the agent's names are only
+    // applied when reading. Mixing schemes — a 2-label re-ask continuing a
+    // 3-label cache — turned every "neutral" letter into nicht_bestimmbar.
+    const runLabels = map ? resolved.labels : labels;
+    const runCriterion = map ? resolved.criterion : criterion;
     const scope = indices.filter((i) => !records[i].regestSynthetic);
     const withoutRegest = indices.length - scope.length;
     const cache = await readCache(key);
@@ -325,12 +336,12 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
     }
     if (todo.length && !(job && !job.finished)) {
       if (todo.length <= SYNC_MAX && wait) {
-        const failures = await runBatch(key, todo, criterion, labels, null, toOld);
+        const failures = await runBatch(key, todo, runCriterion, runLabels, null);
         if (failures) status = `fertig (${failures} Briefe wegen API-Fehlern nicht klassifiziert)`;
       } else {
         job = { key, criterion, total: todo.length, done: 0, started: new Date().toISOString(), finished: null, error: null };
         jobs.set(key, job);
-        runBatch(key, todo, criterion, labels, job, toOld)
+        runBatch(key, todo, runCriterion, runLabels, job)
           .then(() => { job.finished = new Date().toISOString(); })
           .catch((err) => { job.finished = new Date().toISOString(); job.error = String(err?.message || err); });
       }
@@ -358,6 +369,8 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
         ? { hinweis: `Hintergrundauftrag läuft (${job.done}/${job.total}${rate ? `, ~${Math.max(1, Math.round(remaining / rate / 60))} min`: ""}). Die Zahlen unten sind ein ZWISCHENSTAND über ${agg.classified} Briefe — das in der Antwort sagen; dieselbe Frage später erneut stellen liefert das vollständige Ergebnis.` }
         : { hinweis: "Labels beruhen ausschließlich auf dem Regest-Wortlaut; jedes Label ist mit einem Zitat belegt. Anteile beziehen sich auf die bestimmbaren Briefe der Gruppe." }),
       verteilung_gesamt: agg.totals,
+      davon_ohne_zitat_nicht_belegt: agg.unproven,
+      hinweis_belege: "bestimmbar und Anteile zählen nur Labels mit Regest-Zitat; Labels ohne Zitat stehen in davon_ohne_zitat_nicht_belegt.",
       mindestens_bestimmbare_briefe_pro_gruppe: min_letters,
       sortiert_nach: sortKey === "count" ? "Zahl bestimmbarer Briefe" : `Anteil ${sortKey} (dann Zahl bestimmbarer Briefe)`,
       gruppen_gesamt: agg.gruppen_gesamt,
