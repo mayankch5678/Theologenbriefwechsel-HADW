@@ -1,19 +1,19 @@
 {
-  "at": "2026-09-11T15:48:10.393Z",
+  "at": "2026-09-13T19:14:47.699Z",
   "baseUrl": "http://localhost:5055",
   "rows": [
     {
-      "id": "q5_regest_unvollstaendig",
-      "ms": 10747,
+      "id": "q6_versoehnung",
+      "ms": 8136,
       "steps": 1,
       "tools": [
-        "regest_issues"
+        "classify_letters"
       ],
-      "cited": 50,
+      "cited": 20,
       "citationRetry": false,
       "usage": {
-        "prompt_tokens": 18106,
-        "completion_tokens": 2481
+        "prompt_tokens": 23872,
+        "completion_tokens": 1482
       },
       "fails": []
     }
