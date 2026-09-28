@@ -84,6 +84,18 @@ const QUESTIONS = [
     mustNotMention: ["Soll ich"],
   },
   {
+    id: "q9_emotionen",
+    text: "Welche Emotionen werden in den Briefen thematisiert? a) Analysiere die Schlagworte. b) Analysiere die Regesten.",
+    expectTools: ["classify_letters"],
+    mustNotMention: ["Soll ich"],
+  },
+  {
+    id: "q10_polemik",
+    text: "Welche Briefe enthalten die schärfste Polemik?",
+    expectTools: ["classify_letters"],
+    mustNotMention: ["Soll ich"],
+  },
+  {
     id: "q6_versoehnung",
     text: "Welche Briefautoren sind mehr auf konfessionelle (religiöse) Versöhnung und Ausgleich bedacht als auf Abgrenzung?",
     // Must read, not count tags: classify_letters over the archive (cached
