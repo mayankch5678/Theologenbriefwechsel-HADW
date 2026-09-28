@@ -183,7 +183,9 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
     // Netways answers "429 Configured rate limit reached" for the whole
     // account once a short window is used up; it clears within a minute
     // (measured 2026-09-28), so 429s wait it out instead of failing letters.
-    for (let attempt = 0; attempt < 10; attempt++) {
+    // 10 attempts (~2 min) still dropped 3,810 of 18,092 letters on the
+    // Netways test account; 25 (~6 min) lets a batch outlast a busy stretch.
+    for (let attempt = 0; attempt < 25; attempt++) {
       try {
         const completion = await client.chat.completions.create({
           ...extra,
@@ -366,7 +368,9 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
         await writeFile(path.join(dir, `${key}.meta.json`), JSON.stringify({ key, criterion, labels, model, group_by, started: new Date().toISOString() }, null, 1));
       }
     }
-    const fresh = todo.length && (!job || !job.finished) ? await readCache(key) : cache;
+    // Re-read whenever letters were missing: a finished earlier job for the
+    // same key must not hide the ones just filled in synchronously.
+    const fresh = todo.length ? await readCache(key) : cache;
     if (job && !job.finished) status = "laeuft";
     const sortKey = sort_by && sort_by !== "count" ? sort_by.trim().replace(/\s+/g, "_").toLowerCase() : "count";
     const agg = aggregate(fresh, scope, labels, group_by, min_letters, toNew, sortKey);
