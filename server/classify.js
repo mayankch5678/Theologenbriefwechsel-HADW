@@ -31,6 +31,11 @@ const SYNC_MAX = Number(process.env.CLASSIFY_SYNC_MAX || 300);
 // concurrency (measured 2026-09-11: 1 req/s with 40 in flight). A request
 // with 10 regests takes as long as one with 1, so letters are packed.
 const CONCURRENCY = Number(process.env.CLASSIFY_CONCURRENCY || 40);
+// Netways enforces an account-wide rate limit ("429 Configured rate limit
+// reached"): the test account sustains ~1.1 letters/s, about 26k tokens/min,
+// whatever the concurrency (measured 2026-09-28; a full archive ~4.5 h). At
+// 40 in flight every retry hit 429 and the job aborted; 8 plus the 429 wait holds.
+const PROVIDER_MAX = { netways: Number(process.env.NETWAYS_CONCURRENCY || 8) };
 const BATCH = Number(process.env.CLASSIFY_BATCH || 10);
 const REGEST_MAX_CHARS = 3000;
 const GROUPS_MAX = 60;
@@ -175,7 +180,10 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
       )
       .join("\n\n");
     let lastErr;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // Netways answers "429 Configured rate limit reached" for the whole
+    // account once a short window is used up; it clears within a minute
+    // (measured 2026-09-28), so 429s wait it out instead of failing letters.
+    for (let attempt = 0; attempt < 10; attempt++) {
       try {
         const completion = await client.chat.completions.create({
           ...extra,
@@ -205,7 +213,8 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
         return out;
       } catch (err) {
         lastErr = err;
-        const wait = err?.status === 429 ? 5000 * (attempt + 1) : 1500 * (attempt + 1);
+        if (err?.status !== 429 && attempt >= 2) break;
+        const wait = err?.status === 429 ? Math.min(15000, 2000 * 2 ** attempt) * (0.75 + Math.random() / 2) : 1500 * (attempt + 1);
         await new Promise((res) => setTimeout(res, wait));
       }
     }
@@ -247,11 +256,18 @@ export function createClassifier({ records, publicIndices, dataDir, llms, fieldV
     };
     // Workers are bound round-robin to the providers in the pool; each
     // provider serialises its own requests, so the pool adds up.
-    const worker = async (k) => {
+    const slots = [];
+    const perProvider = {};
+    for (let k = 0; k < CONCURRENCY; k++) {
       const llm = llms[k % llms.length];
+      if ((perProvider[llm.provider] || 0) >= (PROVIDER_MAX[llm.provider] ?? Infinity)) continue;
+      perProvider[llm.provider] = (perProvider[llm.provider] || 0) + 1;
+      slots.push(llm);
+    }
+    const worker = async (llm) => {
       while (g < groups.length) await handle(groups[g++], llm);
     };
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, groups.length) }, (_, k) => worker(k)));
+    await Promise.all(slots.slice(0, groups.length).map(worker));
     return failures;
   }
 

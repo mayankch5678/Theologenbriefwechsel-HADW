@@ -27,7 +27,12 @@ if (existsSync(ENV_FILE)) {
 }
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const EMBED_MODEL = process.env.EMBED_MODEL || "bge-m3";
+// EMBED_PROVIDER=netways embeds queries with Netways' hosted BAAI/bge-m3,
+// the same model the index was built with (cosine 0.9999 against stored
+// vectors, measured 2026-09-28), so no local Ollama and no index rebuild.
+const EMBED_PROVIDER = process.env.EMBED_PROVIDER || "ollama";
+const EMBED_MODEL = process.env.EMBED_MODEL || (EMBED_PROVIDER === "netways" ? "BAAI/bge-m3" : "bge-m3");
+const NETWAYS_EMBED_URL = process.env.NETWAYS_EMBED_URL || "https://api.ai.nws.netways.de/v1/embeddings";
 const llm = createLlm();
 const CHAT_MODEL = llm.model;
 const TOP_K = Number(process.env.TOP_K || 30); // embedding-only fallback path
@@ -319,6 +324,16 @@ async function probeRerank() {
 }
 
 async function embedQuery(text) {
+  if (EMBED_PROVIDER === "netways") {
+    const res = await fetch(NETWAYS_EMBED_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.NETWAYS_API_KEY}` },
+      body: JSON.stringify({ model: EMBED_MODEL, input: text }),
+    });
+    if (!res.ok) throw new Error(`Netways embed failed: ${res.status} ${await res.text()}`);
+    const data = await res.json();
+    return data.data[0].embedding;
+  }
   const res = await fetch(`${OLLAMA_URL}/api/embed`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

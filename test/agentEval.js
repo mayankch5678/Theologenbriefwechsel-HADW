@@ -65,9 +65,11 @@ const QUESTIONS = [
   {
     id: "q1_ausland",
     text: "Welche Briefe behandeln Nachrichten aus dem Ausland (von Deutschland aus gesehen)?",
-    expectTools: ["filter_letters", "count_by", "list_values"],
-    mustMention: ["Nachrichten aus Frankreich"],
-    minCited: 6, // examples, not the full list (83 letters)
+    // Daniel 2026-09-24: reading the regests is the main path, literal tag
+    // matches only the fallback, and a foreign place name is not news.
+    expectTools: ["classify_letters"],
+    mustNotMention: ["Soll ich"],
+    minCited: 6, // examples, not the full list
   },
   {
     id: "q7_ausland_deutung",
