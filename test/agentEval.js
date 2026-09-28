@@ -70,6 +70,18 @@ const QUESTIONS = [
     minCited: 6, // examples, not the full list (83 letters)
   },
   {
+    id: "q7_ausland_deutung",
+    text: "Welche Briefe berichten über politische oder kriegerische Ereignisse im Ausland, auch wenn das Wort „Nachrichten“ nicht vorkommt?",
+    expectTools: ["classify_letters"],
+    mustNotMention: ["Soll ich"],
+  },
+  {
+    id: "q8_ausland_krieg",
+    text: "In welchen Briefen wird über Kriege und Aufstände im Ausland berichtet?",
+    expectTools: ["classify_letters"],
+    mustNotMention: ["Soll ich"],
+  },
+  {
     id: "q6_versoehnung",
     text: "Welche Briefautoren sind mehr auf konfessionelle (religiöse) Versöhnung und Ausgleich bedacht als auf Abgrenzung?",
     // Must read, not count tags: classify_letters over the archive (cached
