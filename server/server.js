@@ -45,7 +45,11 @@ const VOLLTEXT_IN_CONTEXT = Number(process.env.VOLLTEXT_IN_CONTEXT || 8);
 // the matching passage is what the model then sees as evidence.
 const CHUNK_TOP_K = Number(process.env.CHUNK_TOP_K || 20);
 const CHUNK_EXTRA_K = Number(process.env.CHUNK_EXTRA_K || 10); // letters chunks may add
-const CHUNK_MIN_SCORE = Number(process.env.CHUNK_MIN_SCORE || 0.5);
+// 0.5 let "Hallo, wie geht es dir?" pull in 10 letters via commentary passages
+// (top chunk cosine 0.576; measured 2026-09-25 after rebuilding the chunk
+// index). Real content questions top out at 0.59–0.64, so 0.6 restores the
+// refusal but leaves the chunk layer contributing only for strong matches.
+const CHUNK_MIN_SCORE = Number(process.env.CHUNK_MIN_SCORE || 0.6);
 // Optional cross-encoder rerank sidecar (rerank/server.py). When reachable,
 // embedding-only extras are re-scored against the question and those below
 // RERANK_MIN are dropped — the residual precision drain after the keyword
