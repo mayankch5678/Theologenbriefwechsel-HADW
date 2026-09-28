@@ -24,3 +24,6 @@ Demo/*
 data/agent-log.jsonl
 data/regest-check.jsonl
 data/classify/
+
+test/spotcheck-*.csv
+Docs/ausland-routing.patch
